@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"sort"
 
 	"gopkg.in/yaml.v2"
 )
@@ -23,6 +24,7 @@ type Config struct {
 }
 
 type FieldConfig struct {
+	Name        string      `yaml:"name"`
 	LogicalType LogicalType `yaml:"logical_type"`
 }
 
@@ -39,4 +41,31 @@ func LoadConfig(filename string) (*Config, error) {
 	}
 
 	return &config, nil
+}
+
+func (conf Config) AllFieldNames() []string {
+	fieldNames := []string{}
+	for _, field := range conf.Fields {
+		fieldNames = append(fieldNames, field.Name)
+	}
+
+	sort.Strings(fieldNames)
+	return fieldNames
+}
+
+func (conf Config) RequiredFieldNames() []string {
+	fieldNames := []string{}
+	for _, field := range conf.Fields {
+		fieldNames = append(fieldNames, field.Name)
+	}
+
+	return fieldNames
+}
+
+func (conf Config) FieldMap() map[string]FieldConfig {
+	fieldMap := map[string]FieldConfig{}
+	for _, field := range conf.Fields {
+		fieldMap[field.Name] = field
+	}
+	return fieldMap
 }

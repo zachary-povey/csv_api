@@ -1,0 +1,7 @@
+fields:
+  - name: column_2
+    logical_type: string
+  - name: column_3
+    logical_type: string
+  - name: column_1
+    logical_type: string
