@@ -8,28 +8,33 @@ import (
 	"sync"
 
 	"github.com/zachary-povey/csv_api/internal/config"
+	"github.com/zachary-povey/csv_api/internal/error_tracking"
 )
 
-func ReadFile(filepath string, config *config.Config, channel chan []*string, wg *sync.WaitGroup) error {
-	// Goroutine to read and parse CSV
+func ReadFile(filepath string, config *config.Config, channel chan []*string, wg *sync.WaitGroup, errTracker error_tracking.ErrorTracker) {
 	defer wg.Done()
+	defer close(channel)
+
 	file, err := os.Open(filepath)
 	if err != nil {
-		close(channel)
-		return fmt.Errorf("error opening file: %s", err)
+		errTracker.AddExecutionError(fmt.Errorf("error opening file: %s", err))
+		return
 	}
 	defer file.Close()
 
 	reader := csv.NewReader(file)
 
 	header, headerErr := reader.Read()
+
 	if headerErr != nil {
-		return fmt.Errorf("error reading CSV header: %s", err)
+		errTracker.AddExecutionError(fmt.Errorf("error reading CSV header: %s", err))
+		return
 	}
 
 	fieldPositions, fieldPosErr := getFieldPositions(config, header)
 	if fieldPosErr != nil {
-		return fieldPosErr
+		errTracker.AddExecutionError(fieldPosErr)
+		return
 	}
 
 	for {
@@ -37,7 +42,8 @@ func ReadFile(filepath string, config *config.Config, channel chan []*string, wg
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return fmt.Errorf("error reading CSV: %s", err)
+			errTracker.AddExecutionError(fmt.Errorf("error reading CSV: %s", err))
+			return
 		}
 		output_record := []*string{}
 
@@ -53,8 +59,7 @@ func ReadFile(filepath string, config *config.Config, channel chan []*string, wg
 
 		channel <- output_record
 	}
-	close(channel)
-	return nil
+
 }
 
 func getFieldPositions(config *config.Config, header []string) (map[string]*int, error) {

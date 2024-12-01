@@ -10,6 +10,7 @@ import (
 
 	"github.com/zachary-povey/csv_api/internal/avro_writer"
 	"github.com/zachary-povey/csv_api/internal/config"
+	"github.com/zachary-povey/csv_api/internal/error_tracking"
 	"github.com/zachary-povey/csv_api/internal/reader"
 )
 
@@ -47,16 +48,24 @@ func main() {
 				return fmt.Errorf("failed to read config: %w", err)
 			}
 
+			errorTracker := error_tracking.NewErrorTracker()
+			errorTracker.Start()
+
 			var waitGroup sync.WaitGroup
 			waitGroup.Add(2)
 			rowChan := make(chan []*string, queueBuffer)
-			readErr := reader.ReadFile(cCtx.Path("data_path"), config, rowChan, &waitGroup)
-			if readErr != nil {
-				return readErr
-			}
-			avro_writer.WriteFile(cCtx.Path("output_path"), config, rowChan, &waitGroup)
+
+			go reader.ReadFile(cCtx.Path("data_path"), config, rowChan, &waitGroup, errorTracker)
+			go avro_writer.WriteFile(cCtx.Path("output_path"), config, rowChan, &waitGroup, errorTracker)
 
 			waitGroup.Wait()
+			errorTracker.Stop()
+
+			if len(errorTracker.ExecutionErrors) > 0 {
+				// todo helper method that joins them all together
+				// and returns as one
+				return errorTracker.ExecutionErrors[0]
+			}
 
 			return nil
 		},

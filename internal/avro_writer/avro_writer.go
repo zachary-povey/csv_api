@@ -9,6 +9,7 @@ import (
 
 	"github.com/linkedin/goavro/v2"
 	"github.com/zachary-povey/csv_api/internal/config"
+	"github.com/zachary-povey/csv_api/internal/error_tracking"
 )
 
 const tmpl string = `
@@ -48,7 +49,7 @@ func generateSchema(config *config.Config) string {
 	return result
 }
 
-func WriteFile(filepath string, config *config.Config, channel chan []*string, wg *sync.WaitGroup) error {
+func WriteFile(filepath string, config *config.Config, channel chan []*string, wg *sync.WaitGroup, errTracker error_tracking.ErrorTracker) {
 	defer wg.Done()
 
 	avroSchema := generateSchema(config)
@@ -56,16 +57,20 @@ func WriteFile(filepath string, config *config.Config, channel chan []*string, w
 
 	output, err := os.Create(filepath)
 	if err != nil {
-		return fmt.Errorf("error opening output file: %s", err)
+		errTracker.AddExecutionError(fmt.Errorf("error opening output file: %s", err))
+		return
 	}
 	defer output.Close()
 
-	writer, writerErr := goavro.NewOCFWriter(goavro.OCFConfig{
-		W:      output,
-		Schema: avroSchema,
-	})
+	writer, writerErr := goavro.NewOCFWriter(
+		goavro.OCFConfig{
+			W:      output,
+			Schema: avroSchema,
+		},
+	)
 	if writerErr != nil {
-		panic(writerErr)
+		errTracker.AddExecutionError(fmt.Errorf("error opening output file: %s", err))
+		return
 	}
 
 	for row := range channel {
@@ -78,5 +83,4 @@ func WriteFile(filepath string, config *config.Config, channel chan []*string, w
 		writer.Append([]map[string]interface{}{resolvedRow})
 	}
 
-	return nil
 }
