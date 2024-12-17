@@ -57,7 +57,14 @@ func ReadFile(filepath string, config *config.Config, channel chan []*string, wg
 			}
 		}
 
-		channel <- output_record
+		select {
+		case <-errTracker.KillCh:
+			fmt.Println("Reader process killed.")
+			return
+		case channel <- output_record:
+			// message added
+		}
+
 	}
 
 }
