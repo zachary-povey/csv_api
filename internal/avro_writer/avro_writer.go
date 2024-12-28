@@ -38,13 +38,11 @@ func generateSchema(config *config.Config) string {
 
 	fmt.Println(config.Fields)
 
-	// Use a strings.Builder to get the output as a string
 	var builder strings.Builder
 	if err := t.Execute(&builder, config.Fields); err != nil {
 		panic(err)
 	}
 
-	// Get the resulting string
 	result := builder.String()
 	return result
 }
