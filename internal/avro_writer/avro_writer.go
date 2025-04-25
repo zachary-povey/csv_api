@@ -19,14 +19,26 @@ const tmpl string = `
 	"fields": [
 	{{- $total := len . }}
 	{{- range $i, $value := . }}
-		{"name": "{{$value.Name}}", "type": "string"}{{if ne $i (subtract $total 1)}},{{end}}
+		{"name": "{{$value.Name}}", "type": "{{map_type $value.LogicalType}}"}{{if ne $i (subtract $total 1)}},{{end}}
 	{{- end }}
 	]
 }`
 
+var type_mappings = map[config.LogicalType]string{
+	config.Integer: "long",
+	config.String:  "string",
+}
+
 var funcMap template.FuncMap = template.FuncMap{
 	"subtract": func(a, b int) int {
 		return a - b
+	},
+	"map_type": func(logical_type config.LogicalType) string {
+		avro_type := type_mappings[logical_type]
+		if avro_type == "" {
+			panic("Unknown logical type: " + logical_type)
+		}
+		return avro_type
 	},
 }
 
@@ -35,9 +47,6 @@ func generateSchema(config *config.Config) string {
 	if err != nil {
 		panic(err)
 	}
-
-	fmt.Println(config.Fields)
-
 	var builder strings.Builder
 	if err := t.Execute(&builder, config.Fields); err != nil {
 		panic(err)
@@ -47,11 +56,10 @@ func generateSchema(config *config.Config) string {
 	return result
 }
 
-func WriteFile(filepath string, config *config.Config, channel chan []*string, wg *sync.WaitGroup, errTracker error_tracking.ErrorTracker) {
+func WriteFile(filepath string, config *config.Config, channel chan map[string]any, wg *sync.WaitGroup, errTracker error_tracking.ErrorTracker) {
 	defer wg.Done()
 
 	avroSchema := generateSchema(config)
-	fmt.Println(avroSchema)
 
 	output, err := os.Create(filepath)
 	if err != nil {
@@ -72,13 +80,7 @@ func WriteFile(filepath string, config *config.Config, channel chan []*string, w
 	}
 
 	for row := range channel {
-		resolvedRow := map[string]interface{}{}
-		for i, value := range row {
-			field := config.Fields[i]
-			resolvedRow[field.Name] = *value
-		}
-		fmt.Println(resolvedRow)
-		writer.Append([]map[string]interface{}{resolvedRow})
+		writer.Append([]map[string]interface{}{row})
 	}
 
 }

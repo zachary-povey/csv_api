@@ -1,7 +1,13 @@
 fields:
   - name: column_2
-    logical_type: string
+    logical_type: integer
+    representations:
+      - pattern: '([0-9]+)'
   - name: column_3
-    logical_type: string
+    logical_type: integer
+    representations:
+      - pattern: ' *(?P<value>[0-9]+) *gbp *'
   - name: column_1
     logical_type: string
+    representations:
+      - pattern: .*

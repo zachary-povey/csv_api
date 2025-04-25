@@ -12,6 +12,7 @@ import (
 	"github.com/zachary-povey/csv_api/internal/avro_writer"
 	"github.com/zachary-povey/csv_api/internal/config"
 	"github.com/zachary-povey/csv_api/internal/error_tracking"
+	"github.com/zachary-povey/csv_api/internal/parser"
 	"github.com/zachary-povey/csv_api/internal/reader"
 )
 
@@ -53,11 +54,13 @@ func main() {
 			errorTracker.Start()
 
 			var waitGroup sync.WaitGroup
-			waitGroup.Add(2)
-			rowChan := make(chan []*string, queueBuffer)
+			waitGroup.Add(3)
+			inputChan := make(chan []*string, queueBuffer)
+			outputChan := make(chan map[string]any, queueBuffer)
 
-			go reader.ReadFile(cCtx.Path("data_path"), config, rowChan, &waitGroup, errorTracker)
-			go avro_writer.WriteFile(cCtx.Path("output_path"), config, rowChan, &waitGroup, errorTracker)
+			go reader.ReadFile(cCtx.Path("data_path"), config, inputChan, &waitGroup, errorTracker)
+			go parser.ParseData(config, inputChan, outputChan, &waitGroup, errorTracker)
+			go avro_writer.WriteFile(cCtx.Path("output_path"), config, outputChan, &waitGroup, errorTracker)
 
 			waitGroup.Wait()
 			errorTracker.Stop()
