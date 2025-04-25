@@ -19,7 +19,7 @@ const tmpl string = `
 	"fields": [
 	{{- $total := len . }}
 	{{- range $i, $value := . }}
-		{"name": "{{$value.Name}}", "type": "{{map_type $value.LogicalType}}"}{{if ne $i (subtract $total 1)}},{{end}}
+		{"name": "{{$value.Name}}", "type": "{{map_type $value.LogicalTypeConfig.Name}}"}{{if ne $i (subtract $total 1)}},{{end}}
 	{{- end }}
 	]
 }`

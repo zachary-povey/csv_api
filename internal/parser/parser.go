@@ -139,9 +139,9 @@ func ParseData(config *config.Config, input_channel chan []*string, output_chann
 			if !any_matched {
 				errTracker.AddReportError(fmt.Sprintf("value '%s' did not match any pattern in column '%s'", *value, field.Name), "cell")
 			}
-			parsed_value, err := Convert(field_args, field.LogicalType)
+			parsed_value, err := Convert(field_args, field.LogicalTypeConfig.Name)
 			if err != nil {
-				errTracker.AddReportError(fmt.Sprintf("Failed to convert '%s' to type '%s'\nResolved args: %v\nException:\n %s", *value, field.LogicalType, field_args, err), "cell")
+				errTracker.AddReportError(fmt.Sprintf("Failed to convert '%s' to type '%s'\nResolved args: %v\nException:\n %s", *value, field.LogicalTypeConfig.Name, field_args, err), "cell")
 				return
 			}
 			resolvedRow[field.Name] = parsed_value

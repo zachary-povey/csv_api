@@ -28,10 +28,15 @@ type Representation struct {
 	Args    map[string]any `yaml:"args"`
 }
 
+type LogicalTypeConfig struct {
+	Name LogicalType    `yaml:"name"`
+	Args map[string]any `yaml:"args"`
+}
+
 type FieldConfig struct {
-	Name            string           `yaml:"name"`
-	LogicalType     LogicalType      `yaml:"logical_type"`
-	Representations []Representation `yaml:"representations"`
+	Name              string            `yaml:"name"`
+	LogicalTypeConfig LogicalTypeConfig `yaml:"logical_type"`
+	Representations   []Representation  `yaml:"representations"`
 }
 
 func LoadConfig(filename string) (*Config, error) {
