@@ -144,7 +144,6 @@ func ParseData(config *config.Config, input_channel chan []*string, output_chann
 				errTracker.AddReportError(fmt.Sprintf("Failed to convert '%s' to type '%s'\nResolved args: %v\nException:\n %s", *value, field.LogicalType, field_args, err), "cell")
 				return
 			}
-			fmt.Println("!!!", parsed_value)
 			resolvedRow[field.Name] = parsed_value
 		}
 		output_channel <- resolvedRow
