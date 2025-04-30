@@ -78,6 +78,25 @@ func main() {
 					}
 				},
 			},
+			{
+				Name:        "validate_config",
+				Usage:       "Validates a csv_api config file.",
+				Description: "Validates a csv_api config file.",
+				Flags: []cli.Flag{
+					&cli.PathFlag{
+						Name:     "config_path",
+						Usage:    "config file path",
+						Required: true,
+					},
+				},
+				Action: func(cCtx *cli.Context) error {
+					_, err := config.LoadConfig(cCtx.Path("config_path"))
+					if err != nil {
+						return fmt.Errorf("failed to read config:\n%w", err)
+					}
+					return nil
+				},
+			},
 		},
 	}
 

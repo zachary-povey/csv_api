@@ -7,15 +7,14 @@ import (
 	"github.com/zachary-povey/csv_api/internal/config"
 )
 
-func Convert(args map[string]any, logical_type config.LogicalType) (any, error) {
-	if logical_type == config.Integer {
+func Convert(args map[string]any, logical_type config.LogicalTypeConfig) (any, error) {
+	switch logical_type.(type) {
+	case config.IntegerTypeConfig:
 		return convert_int(args)
-	} else if logical_type == config.String {
-		return convert_string(args)
-	} else {
+	default:
 		return nil, fmt.Errorf("unsupported logical type: %s", logical_type)
-	}
 
+	}
 }
 
 func convert_int(args map[string]any) (int, error) {
