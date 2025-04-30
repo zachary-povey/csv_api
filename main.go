@@ -23,56 +23,61 @@ const (
 func main() {
 
 	app := &cli.App{
-		Name:        "csv_api",
-		Description: "Validates a csv file and extracts it into avro.",
-		Flags: []cli.Flag{
-			&cli.PathFlag{
-				Name:     "config_path",
-				Usage:    "config file path",
-				Required: true,
+		Name: "csv_api",
+		Commands: []*cli.Command{
+			{
+				Name:        "parse",
+				Usage:       "Validates a csv file and extracts it into avro.",
+				Description: "Validates a csv file and extracts it into avro.",
+				Flags: []cli.Flag{
+					&cli.PathFlag{
+						Name:     "config_path",
+						Usage:    "config file path",
+						Required: true,
+					},
+
+					&cli.PathFlag{
+						Name:     "data_path",
+						Usage:    "data file path",
+						Required: true,
+					},
+
+					&cli.PathFlag{
+						Name:     "output_path",
+						Usage:    "output file path",
+						Required: true,
+					},
+				},
+				Action: func(cCtx *cli.Context) error {
+					config, err := config.LoadConfig(cCtx.Path("config_path"))
+					if err != nil {
+						return fmt.Errorf("failed to read config: %w", err)
+					}
+
+					errorTracker := error_tracking.NewErrorTracker()
+					errorTracker.Start()
+
+					var waitGroup sync.WaitGroup
+					waitGroup.Add(3)
+					inputChan := make(chan []*string, queueBuffer)
+					outputChan := make(chan map[string]any, queueBuffer)
+
+					go reader.ReadFile(cCtx.Path("data_path"), config, inputChan, &waitGroup, errorTracker)
+					go parser.ParseData(config, inputChan, outputChan, &waitGroup, errorTracker)
+					go avro_writer.WriteFile(cCtx.Path("output_path"), config, outputChan, &waitGroup, errorTracker)
+
+					waitGroup.Wait()
+					errorTracker.Stop()
+
+					if len(errorTracker.ExecutionErrors) > 0 {
+						return errorTracker.CombinedExecutionError()
+					} else if errorTracker.ErrorReport.ContainsErrors() {
+						return errors.New(errorTracker.ErrorReport.ConsoleFormat())
+					} else {
+						return nil
+					}
+				},
 			},
-
-			&cli.PathFlag{
-				Name:     "data_path",
-				Usage:    "data file path",
-				Required: true,
-			},
-
-			&cli.PathFlag{
-				Name:     "output_path",
-				Usage:    "output file path",
-				Required: true,
-			},
-		},
-		Action: func(cCtx *cli.Context) error {
-			config, err := config.LoadConfig(cCtx.Path("config_path"))
-			if err != nil {
-				return fmt.Errorf("failed to read config: %w", err)
-			}
-
-			errorTracker := error_tracking.NewErrorTracker()
-			errorTracker.Start()
-
-			var waitGroup sync.WaitGroup
-			waitGroup.Add(3)
-			inputChan := make(chan []*string, queueBuffer)
-			outputChan := make(chan map[string]any, queueBuffer)
-
-			go reader.ReadFile(cCtx.Path("data_path"), config, inputChan, &waitGroup, errorTracker)
-			go parser.ParseData(config, inputChan, outputChan, &waitGroup, errorTracker)
-			go avro_writer.WriteFile(cCtx.Path("output_path"), config, outputChan, &waitGroup, errorTracker)
-
-			waitGroup.Wait()
-			errorTracker.Stop()
-
-			if len(errorTracker.ExecutionErrors) > 0 {
-				return errorTracker.CombinedExecutionError()
-			} else if errorTracker.ErrorReport.ContainsErrors() {
-				return errors.New(errorTracker.ErrorReport.ConsoleFormat())
-			} else {
-				return nil
-			}
-
 		},
 	}
 
