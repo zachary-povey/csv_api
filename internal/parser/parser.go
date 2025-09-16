@@ -138,6 +138,7 @@ func ParseData(config *config.Config, input_channel chan []*string, output_chann
 			}
 			if !any_matched {
 				errTracker.AddReportError(fmt.Sprintf("value '%s' did not match any pattern in column '%s'", *value, field.Name), "cell")
+				return
 			}
 			parsed_value, err := Convert(field_args, field.LogicalTypeConfig)
 			if err != nil {

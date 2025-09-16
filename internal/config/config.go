@@ -163,13 +163,13 @@ func LoadConfig(filename string) (*Config, error) {
 		return nil, err
 	}
 
-	for _, field := range config.Fields {
-		err = field.UnmarshalTypeConfigs()
+	for i := range config.Fields {
+		err = config.Fields[i].UnmarshalTypeConfigs()
 		if err != nil {
 			return nil, err
 		}
-		validate.Struct(field.LogicalTypeConfig)
-		fmt.Printf("%+v\n", field.LogicalTypeConfig)
+		validate.Struct(config.Fields[i].LogicalTypeConfig)
+		fmt.Printf("%+v\n", config.Fields[i].LogicalTypeConfig)
 	}
 
 	return &config, nil

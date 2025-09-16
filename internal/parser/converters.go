@@ -11,6 +11,8 @@ func Convert(args map[string]any, logical_type config.LogicalTypeConfig) (any, e
 	switch logical_type.(type) {
 	case config.IntegerTypeConfig:
 		return convert_int(args)
+	case config.StringTypeConfig:
+		return convert_string(args)
 	default:
 		return nil, fmt.Errorf("unsupported logical type: %s", logical_type)
 
@@ -18,10 +20,13 @@ func Convert(args map[string]any, logical_type config.LogicalTypeConfig) (any, e
 }
 
 func convert_int(args map[string]any) (int, error) {
-	value := args["value"]
+	value, exists := args["value"]
+	if !exists {
+		return 0, fmt.Errorf("missing 'value' argument")
+	}
 	string_value, ok := value.(string)
 	if !ok {
-		panic(fmt.Errorf("'value' in args is not of type string"))
+		return 0, fmt.Errorf("'value' in args is not of type string")
 	}
 	intValue, err := strconv.Atoi(string_value)
 	if err != nil {
@@ -31,10 +36,13 @@ func convert_int(args map[string]any) (int, error) {
 }
 
 func convert_string(args map[string]any) (string, error) {
-	value := args["value"]
+	value, exists := args["value"]
+	if !exists {
+		return "", fmt.Errorf("missing 'value' argument")
+	}
 	string_value, ok := value.(string)
 	if !ok {
-		panic(fmt.Errorf("'value' in args is not of type string"))
+		return "", fmt.Errorf("'value' in args is not of type string")
 	}
 	return string_value, nil
 }
