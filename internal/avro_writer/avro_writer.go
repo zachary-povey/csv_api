@@ -19,7 +19,7 @@ const tmpl string = `
 	"fields": [
 	{{- $total := len . }}
 	{{- range $i, $value := . }}
-		{"name": "{{$value.Name}}", "type": "{{map_type $value.LogicalTypeConfig.Name}}"}{{if ne $i (subtract $total 1)}},{{end}}
+		{"name": "{{$value.Name}}", "type": {{map_type_json $value.LogicalTypeConfig}}}{{if ne $i (subtract $total 1)}},{{end}}
 	{{- end }}
 	]
 }`
@@ -27,6 +27,7 @@ const tmpl string = `
 var type_mappings = map[config.LogicalType]string{
 	config.Integer: "long",
 	config.String:  "string",
+	config.Decimal: "double", // Use double for decimals (both float and precise)
 }
 
 var funcMap template.FuncMap = template.FuncMap{
@@ -39,6 +40,25 @@ var funcMap template.FuncMap = template.FuncMap{
 			panic("Unknown logical type: " + logical_type)
 		}
 		return avro_type
+	},
+	"map_type_json": func(logical_type_config config.LogicalTypeConfig) string {
+		switch ltc := logical_type_config.(type) {
+		case config.IntegerTypeConfig:
+			return `"long"`
+		case config.StringTypeConfig:
+			return `"string"`
+		case config.DecimalTypeConfig:
+			if ltc.Args.AsFloat {
+				// Use double for float decimals
+				return `"double"`
+			} else {
+				// Use Avro logical decimal type with precision and scale
+				return fmt.Sprintf(`{"type":"bytes","logicalType":"decimal","precision":%d,"scale":%d}`,
+					ltc.Args.Precision, ltc.Args.Scale)
+			}
+		default:
+			panic(fmt.Sprintf("Unknown logical type config: %T", logical_type_config))
+		}
 	},
 }
 

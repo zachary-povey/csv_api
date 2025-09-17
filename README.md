@@ -46,19 +46,19 @@ name: MyDesciptiveName # used as avro schema name
 allow_extra_fields: true
 fields:
   some_date:
-	header_patterns:
-		- ^SomeDate$
-    logical_type: date
-    required: true # if it should be present in the file
-    nullable: true  # if the value of the reolved logical type can be null
-    physical_representations:
-      - pattern: "-'"
-        is_null: true
-      - pattern: "start"
-        args:
-          year: 2020
-          month: 1
-          day: 1
-      - pattern: "[0-9]{4}-[0-9]{2}-[0-9]{2}"
+    header_patterns:
+      - ^SomeDate$
+      logical_type: date
+      required: true # if it should be present in the file
+      nullable: true  # if the value of the reolved logical type can be null
+      physical_representations:
+        - pattern: "-'"
+          is_null: true
+        - pattern: "start"
+          args:
+            year: 2020
+            month: 1
+            day: 1
+        - pattern: "[0-9]{4}-[0-9]{2}-[0-9]{2}"
 
 ```
