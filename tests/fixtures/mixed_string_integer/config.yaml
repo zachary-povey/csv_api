@@ -1,0 +1,16 @@
+fields:
+  - name: name
+    logical_type:
+      name: string
+    representations:
+      - pattern: "(?P<value>.*)"
+  - name: score
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "(?P<value>[0-9]+)"
+  - name: category
+    logical_type:
+      name: string
+    representations:
+      - pattern: "(?P<value>.*)"

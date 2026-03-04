@@ -1,0 +1,11 @@
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "(?P<value>[0-9]+)"
+  - name: age
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "(?P<value>[0-9]+)"

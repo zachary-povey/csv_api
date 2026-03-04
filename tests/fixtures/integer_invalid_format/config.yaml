@@ -1,0 +1,6 @@
+fields:
+  - name: number
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "(?P<value>[0-9.]+)"

@@ -1,0 +1,9 @@
+fields:
+  - name: measurement
+    logical_type:
+      name: decimal
+      args:
+        precision: 6
+        scale: 3
+    representations:
+      - pattern: "(?P<integer_part>[0-9]+) and (?P<decimal_part>[0-9]{3})/1000"

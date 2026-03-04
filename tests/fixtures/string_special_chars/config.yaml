@@ -1,0 +1,6 @@
+fields:
+  - name: text
+    logical_type:
+      name: string
+    representations:
+      - pattern: "(?P<value>.*)"
