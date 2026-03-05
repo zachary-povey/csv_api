@@ -129,8 +129,8 @@ func ParseData(config *config.Config, input_channel chan []*string, output_chann
 
 					// merge args from regex with static ones on representation
 					// values from regex match have priority if there is overlap
-					maps.Copy(field_args, rep.Args)
-					for k, v := range args {
+					maps.Copy(field_args, args)
+					for k, v := range rep.Args {
 						field_args[k] = v
 					}
 					break
