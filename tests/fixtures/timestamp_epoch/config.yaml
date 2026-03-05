@@ -1,0 +1,8 @@
+fields:
+  - name: created_at
+    logical_type:
+      name: timestamp
+    representations:
+      - pattern: "(?P<value>[0-9]+)"
+        args:
+          precision: seconds

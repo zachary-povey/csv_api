@@ -1,0 +1,16 @@
+fields:
+  - name: event_name
+    logical_type:
+      name: string
+    representations:
+      - pattern: "(?P<value>.*)"
+  - name: event_date
+    logical_type:
+      name: date
+    representations:
+      - pattern: "(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})"
+  - name: attendees
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "(?P<value>[0-9]+)"

@@ -1,0 +1,16 @@
+fields:
+  - name: status
+    logical_type:
+      name: enum
+      args:
+        permitted_values:
+          - active
+          - inactive
+    representations:
+      - pattern: "^(?:live)$"
+        args:
+          value: active
+      - pattern: "^(?:disabled)$"
+        args:
+          value: inactive
+      - pattern: "(?P<value>active|inactive)"

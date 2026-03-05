@@ -1,0 +1,158 @@
+journey:
+  name: "Messy CSV to Typed Avro via Flexible Representations"
+  goal: "Convert CSV fields with enum, date, time, and timestamp values in arbitrary input formats into correctly typed Avro output using configurable regex representations"
+  persona: "Ravi Krishnan, Data Engineer"
+
+  architecture_summary: |
+    CSV string -> Representation regex match (first wins) -> Extract named groups
+    -> Merge with static args (regex wins on overlap) -> Converter receives args dict
+    -> Typed output value -> Avro schema validates -> Written to Avro file.
+    Representations handle input flexibility. Converters handle output correctness.
+    Converters never see raw input strings.
+
+  emotional_arc:
+    start: "Thoughtful -- what input formats do I need to accept? What named groups do I need?"
+    middle: "Anxious during parse -- will messy inputs convert correctly through regex extraction + conversion?"
+    end: "Confident -- messy input produced clean, typed Avro output declaratively"
+
+steps:
+  - id: 1
+    name: "Define Config"
+    action: "Author YAML config with logical_type, type-specific args, and representations (regex patterns + optional static args)"
+    key_decisions:
+      - "Which input formats to support (one representation per format)"
+      - "What named capture groups to extract (must match converter parameter set)"
+      - "Whether to use static args for value remapping (e.g., 'live' -> active)"
+    shared_artifacts:
+      - name: "config_file"
+        source: "config.yaml (user-authored)"
+        consumers: ["validate_config subcommand", "parse subcommand"]
+    emotional_state:
+      entry: "Thoughtful about input format variety"
+      exit: "Hopeful -- representations look right for expected formats"
+
+  - id: 2
+    name: "Validate Config"
+    action: "./build validate_config --config_path config.yaml"
+    validates:
+      - "logical_type name is recognized"
+      - "type-specific args present and valid (e.g., permitted_values for enum)"
+      - "YAML structure is correct"
+    does_not_validate:
+      - "regex pattern correctness (validated at parse time)"
+      - "named group names matching converter expectations"
+    shared_artifacts:
+      - name: "config_file"
+        source: "config.yaml"
+        consumers: ["config.LoadConfig()"]
+    emotional_state:
+      entry: "Hopeful"
+      exit: "Relieved if valid, focused if error (error is actionable)"
+    integration_checkpoint: |
+      Config parses without error.
+      Type-specific args validated.
+      Unknown type names produce clear error.
+
+  - id: 3
+    name: "Run Parse"
+    action: "./build parse --config_path config.yaml --data_path data.csv --output_path output.avro"
+    processing_flow:
+      - "Reader reads CSV, maps columns to fields by header name"
+      - "For each cell: try representations in order, first regex match wins"
+      - "Extract named capture groups as args, merge with static args"
+      - "Call Convert(args, logical_type_config) -- converter validates and converts"
+      - "Avro writer generates schema from logical_type_configs, writes typed records"
+    failure_modes:
+      - type: "representation_failure"
+        cause: "No regex matched the raw input string"
+        message: "value 'X' did not match any pattern in column 'Y'"
+      - type: "converter_failure"
+        cause: "Regex matched but extracted args invalid for the type"
+        message: "Failed to convert 'X' to type 'Y'\nResolved args: ...\nException: ..."
+    shared_artifacts:
+      - name: "config_file"
+        source: "config.yaml"
+        consumers: ["reader (header validation)", "parser (representation matching + conversion)", "avro_writer (schema generation)"]
+      - name: "csv_data"
+        source: "data.csv (user-provided)"
+        consumers: ["reader"]
+      - name: "avro_output"
+        source: "output.avro (generated)"
+        consumers: ["downstream systems"]
+    emotional_state:
+      entry: "Anxious -- will messy inputs convert correctly?"
+      exit: "Confident if success, informed if error (errors are specific)"
+    integration_checkpoint: |
+      Parser dispatches to correct convert_* function for each type.
+      Avro writer generates correct schema with logical type metadata.
+      Error tracker reports row/field/value/args for failures.
+
+  - id: 4
+    name: "Verify Output"
+    action: "Read Avro file and inspect records and schema"
+    shared_artifacts:
+      - name: "avro_output"
+        source: "output.avro"
+        consumers: ["verification script", "downstream pipeline"]
+    emotional_state:
+      entry: "Cautiously optimistic"
+      exit: "Confident -- data is correct and schema is typed"
+    integration_checkpoint: |
+      Avro schema contains correct logical type annotations.
+      Record values match expected conversions.
+
+type_specific_details:
+  enum:
+    config_args: "permitted_values (required, list of strings)"
+    converter_params: "(value: string) -> string"
+    converter_validates: "value is in permitted_values list"
+    avro_schema: '{"type":"enum","name":"<field_name>","symbols":[...]}'
+    representation_power: |
+      Case-insensitive matching via regex (?i).
+      Value remapping via static args (e.g., pattern "live" with args {value: "active"}).
+      Multiple accepted spellings mapped to canonical values.
+
+  date:
+    config_args: "none"
+    converter_params: "(year, month, day) -> int32"
+    converter_validates: "valid calendar date (month 1-12, day valid for month/year, leap year)"
+    avro_schema: '{"type":"int","logicalType":"date"}'
+    output_value: "days since 1970-01-01 (negative for pre-epoch)"
+    representation_power: |
+      ISO: (?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})
+      European: (?P<day>\d{2})/(?P<month>\d{2})/(?P<year>\d{4})
+      US: (?P<month>\d{2})-(?P<day>\d{2})-(?P<year>\d{4})
+      Any format that extracts year/month/day named groups.
+
+  time:
+    config_args: "none"
+    converter_params: "(hour=0, minute=0, second=0, millisecond=0, microsecond=0) -> int64"
+    converter_validates: "hour 0-23, minute 0-59, second 0-59, millisecond 0-999, microsecond 0-999"
+    avro_schema: '{"type":"long","logicalType":"time-micros"}'
+    output_value: "microseconds since midnight"
+    representation_power: |
+      24h: (?P<hour>\d{2}):(?P<minute>\d{2}):(?P<second>\d{2})
+      With fraction: ...(?:\.(?P<fraction>\d+))?
+      12h: regex extracts hour and AM/PM, static args or regex logic converts to 24h.
+      Any format that extracts hour/minute/second/fraction components.
+
+  timestamp:
+    config_args: "none"
+    converter_params_set_1: "(value, offset=0, precision) -> int64  [epoch-based]"
+    converter_params_set_2: "(year, month, day, hour=0, minute=0, second=0, millisecond=0, microsecond=0, timezone=null) -> int64  [component-based]"
+    converter_validates: "same as date+time validation for components; precision is valid enum; timezone is parseable"
+    avro_schema: '{"type":"long","logicalType":"timestamp-micros"}'
+    output_value: "microseconds since Unix epoch (UTC)"
+    representation_power: |
+      ISO: full regex extracting year/month/day/hour/minute/second/fraction/offset
+      Epoch: (?P<value>\d+) with static args {precision: "seconds"}
+      Custom: any regex extracting the right named groups for either parameter set.
+
+integration_validation:
+  shared_artifact_consistency:
+    - artifact: "config_file"
+      must_match_across: [1, 2, 3]
+      failure_message: "Config used for validation must be same config used for parsing"
+    - artifact: "logical_type_config"
+      must_match_across: [3]
+      failure_message: "Parser type dispatch and Avro writer schema generation must agree on type mapping"

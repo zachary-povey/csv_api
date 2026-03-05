@@ -1,0 +1,10 @@
+fields:
+  - name: status
+    logical_type:
+      name: enum
+      args:
+        permitted_values:
+          - active
+          - inactive
+    representations:
+      - pattern: "(?P<value>.*)"

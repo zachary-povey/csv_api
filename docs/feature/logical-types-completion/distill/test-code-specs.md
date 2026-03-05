@@ -1,177 +1,52 @@
+# Test Code Specifications: logical-types-completion
+
+All tests are added to `tests/test_logical_types.py`. They follow the existing pattern exactly:
+`run_fixture(build_path, "<fixture_name>")` with assertions on `result.returncode`, `result.records`, and error output.
+
+New imports needed at top of file:
+
+```python
 import datetime
-import decimal
-from tests.utils import run_fixture
+```
 
+(`decimal` is already imported.)
 
-def test_simple_string_fields(build_path):
-    result = run_fixture(build_path, "simple_strings")
-    assert result.returncode == 0, f"Command failed: {result.stderr}"
-    assert len(result.records) == 2
-    assert result.records[0]["name"] == "John"
-    assert result.records[0]["description"] == "Software Engineer"
-    assert result.records[1]["name"] == "Jane"
-    assert result.records[1]["description"] == "Data Scientist"
+---
 
+## Implementation Order
 
-def test_simple_integer_fields(build_path):
-    result = run_fixture(build_path, "simple_integers")
-    assert result.returncode == 0, f"Command failed: {result.stderr}"
-    assert len(result.records) == 2
-    assert result.records[0]["id"] == 1
-    assert result.records[0]["age"] == 25
-    assert result.records[1]["id"] == 2
-    assert result.records[1]["age"] == 30
+Tests should be enabled one at a time in this order. All tests except the first should be marked with `@pytest.mark.skip(reason="not yet implemented")` initially.
 
+1. `test_enum_basic` -- first enum test, proves enum converter + avro writer work
+2. `test_enum_case_insensitive` -- static args remapping via representation
+3. `test_enum_value_remap` -- non-capturing group + static args pattern
+4. `test_enum_multiple_representations` -- multiple representations per field
+5. `test_enum_invalid_value` -- enum error path
+6. `test_enum_mixed_types` -- enum alongside other types
+7. `test_date_iso` -- first date test, proves date converter + avro writer work
+8. `test_date_custom_format` -- custom representation for dates
+9. `test_date_invalid_components` -- date error path
+10. `test_date_mixed_types` -- date alongside other types
+11. `test_time_iso` -- first time test, proves time converter + avro writer work
+12. `test_time_fractional_seconds` -- microsecond precision
+13. `test_time_custom_format` -- custom representation for times
+14. `test_time_edge_cases` -- boundary values
+15. `test_timestamp_iso_offset` -- first timestamp test, proves converter + avro writer work
+16. `test_timestamp_iso_utc` -- Z suffix handling
+17. `test_timestamp_custom_format` -- custom representation for timestamps
+18. `test_timestamp_epoch` -- epoch-based conversion with precision static arg
+19. `test_timestamp_timezone_conversion` -- timezone offset to UTC
+20. `test_timestamp_invalid` -- timestamp error path
+21. `test_all_new_types_mixed` -- walking skeleton, all types together
 
-def test_mixed_string_integer_fields(build_path):
-    result = run_fixture(build_path, "mixed_string_integer")
-    assert result.returncode == 0, f"Command failed: {result.stderr}"
-    assert len(result.records) == 2
-    assert result.records[0]["name"] == "Alice"
-    assert result.records[0]["score"] == 95
-    assert result.records[0]["category"] == "A"
-    assert result.records[1]["name"] == "Bob"
-    assert result.records[1]["score"] == 87
-    assert result.records[1]["category"] == "B"
+---
 
+## Test Functions
 
-def test_complex_integer_patterns(build_path):
-    result = run_fixture(build_path, "complex_integer_patterns")
-    assert result.returncode == 0, f"Command failed: {result.stderr}"
-    assert len(result.records) == 2
-    assert result.records[0]["product"] == "Widget"
-    assert result.records[0]["price"] == 10
-    assert result.records[1]["product"] == "Gadget"
-    assert result.records[1]["price"] == 25
+### Enum Tests
 
-
-def test_string_with_special_characters(build_path):
-    result = run_fixture(build_path, "string_special_chars")
-    assert result.returncode == 0, f"Command failed: {result.stderr}"
-    assert len(result.records) == 2
-    assert result.records[0]["text"] == "Hello, World!"
-    assert result.records[1]["text"] == 'Test with "quotes"'
-
-
-def test_integer_validation_failure(build_path):
-    result = run_fixture(build_path, "integer_invalid_value")
-    assert result.returncode != 0, "Command should have failed"
-    assert (
-        "abc" in result.stderr or "abc" in result.stdout
-    ), f"Error should mention invalid value 'abc': {result.stderr} {result.stdout}"
-
-
-def test_regex_pattern_mismatch(build_path):
-    result = run_fixture(build_path, "regex_pattern_mismatch")
-    assert result.returncode != 0, "Command should have failed"
-    assert (
-        "dollars" in result.stderr
-        or "dollars" in result.stdout
-        or "pattern" in result.stderr.lower()
-        or "does not match" in result.stderr.lower()
-    ), f"Error should mention pattern mismatch with 'dollars': {result.stderr} {result.stdout}"
-
-
-def test_missing_required_field(build_path):
-    result = run_fixture(build_path, "missing_required_field")
-    assert result.returncode != 0, "Command should have failed"
-    assert (
-        "age" in result.stderr
-        or "age" in result.stdout
-        or "missing" in result.stderr.lower()
-        or "required" in result.stderr.lower()
-    ), f"Error should mention missing required field 'age': {result.stderr} {result.stdout}"
-
-
-def test_integer_overflow_or_invalid_format(build_path):
-    result = run_fixture(build_path, "integer_invalid_format")
-    assert result.returncode != 0, "Command should have failed"
-    assert (
-        "45.67" in result.stderr
-        or "45.67" in result.stdout
-        or "invalid integer" in result.stderr.lower()
-        or "not a valid integer" in result.stderr.lower()
-    ), f"Error should mention invalid integer '45.67': {result.stderr} {result.stdout}"
-
-
-def test_empty_required_field(build_path):
-    result = run_fixture(build_path, "empty_required_field")
-    assert result.returncode != 0, "Command should have failed"
-    assert (
-        "did not match" in result.stderr.lower()
-        or "pattern" in result.stderr.lower()
-        or "value ''" in result.stderr
-    ), f"Error should mention pattern mismatch with empty value: {result.stderr} {result.stdout}"
-
-
-def test_decimal_single_value_as_float(build_path):
-    result = run_fixture(build_path, "decimal_as_float")
-    assert result.returncode == 0, f"Command failed: {result.stderr}"
-    assert len(result.records) == 2
-    assert result.records[0]["price"] == 19.99
-    assert result.records[1]["price"] == 25.50
-
-
-def test_decimal_single_value_with_precision_scale(build_path):
-    result = run_fixture(build_path, "decimal_precision_scale")
-    assert result.returncode == 0, f"Command failed: {result.stderr}"
-    assert len(result.records) == 2
-    assert result.records[0]["amount"] == decimal.Decimal("123.45")
-    assert result.records[1]["amount"] == decimal.Decimal("999.99")
-
-
-def test_decimal_separate_integer_decimal_parts(build_path):
-    result = run_fixture(build_path, "decimal_split_parts")
-    assert result.returncode == 0, f"Command failed: {result.stderr}"
-    assert len(result.records) == 2
-    assert result.records[0]["currency"] == 42.15
-    assert result.records[1]["currency"] == 156.78
-
-
-def test_decimal_precision_scale_with_integer_decimal_parts(build_path):
-    result = run_fixture(build_path, "decimal_precision_scale_split_parts")
-    assert result.returncode == 0, f"Command failed: {result.stderr}"
-    assert len(result.records) == 2
-    assert result.records[0]["measurement"] == decimal.Decimal("25.125")
-    assert result.records[1]["measurement"] == decimal.Decimal("99.999")
-
-
-def test_decimal_mixed_with_other_types(build_path):
-    result = run_fixture(build_path, "decimal_mixed_types")
-    assert result.returncode == 0, f"Command failed: {result.stderr}"
-    assert len(result.records) == 2
-    assert result.records[0]["product"] == "Apple"
-    assert result.records[0]["price"] == 1.25
-    assert result.records[0]["quantity"] == 10
-    assert result.records[1]["product"] == "Banana"
-    assert result.records[1]["price"] == 0.75
-    assert result.records[1]["quantity"] == 15
-
-
-def test_decimal_validation_failures(build_path):
-    result = run_fixture(build_path, "decimal_invalid_format")
-    assert result.returncode != 0, "Command should have failed"
-    assert (
-        "did not match" in result.stderr.lower()
-        or "invalid_price" in result.stderr
-        or "pattern" in result.stderr.lower()
-    ), f"Error should mention validation failures: {result.stderr} {result.stdout}"
-
-
-def test_decimal_precision_scale_validation_failure(build_path):
-    result = run_fixture(build_path, "decimal_conflicting_args")
-    assert result.returncode != 0, "Command should have failed due to invalid config"
-    assert (
-        "config" in result.stderr.lower()
-        or "precision" in result.stderr
-        or "as_float" in result.stderr
-        or "mutually exclusive" in result.stderr.lower()
-    ), f"Error should mention config validation issue: {result.stderr} {result.stdout}"
-
-
-# --- Enum Tests ---
-
-
+```python
+@pytest.mark.skip(reason="not yet implemented")
 def test_enum_basic(build_path):
     result = run_fixture(build_path, "enum_basic")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -181,6 +56,7 @@ def test_enum_basic(build_path):
     assert result.records[2]["status"] == "pending"
 
 
+@pytest.mark.skip(reason="not yet implemented")
 def test_enum_case_insensitive(build_path):
     result = run_fixture(build_path, "enum_case_insensitive")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -190,6 +66,7 @@ def test_enum_case_insensitive(build_path):
     assert result.records[2]["status"] == "active"
 
 
+@pytest.mark.skip(reason="not yet implemented")
 def test_enum_value_remap(build_path):
     result = run_fixture(build_path, "enum_value_remap")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -199,6 +76,7 @@ def test_enum_value_remap(build_path):
     assert result.records[2]["status"] == "active"
 
 
+@pytest.mark.skip(reason="not yet implemented")
 def test_enum_multiple_representations(build_path):
     result = run_fixture(build_path, "enum_multiple_representations")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -211,16 +89,19 @@ def test_enum_multiple_representations(build_path):
     assert result.records[5]["priority"] == "medium"
 
 
+@pytest.mark.skip(reason="not yet implemented")
 def test_enum_invalid_value(build_path):
     result = run_fixture(build_path, "enum_invalid_value")
     assert result.returncode != 0, "Command should have failed"
     assert (
         "unknown" in result.stderr.lower()
         or "permitted" in result.stderr.lower()
+        or "not a valid" in result.stderr.lower()
         or "invalid" in result.stderr.lower()
     ), f"Error should mention invalid enum value: {result.stderr} {result.stdout}"
 
 
+@pytest.mark.skip(reason="not yet implemented")
 def test_enum_mixed_types(build_path):
     result = run_fixture(build_path, "enum_mixed_types")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -231,11 +112,14 @@ def test_enum_mixed_types(build_path):
     assert result.records[1]["name"] == "Bob"
     assert result.records[1]["age"] == 25
     assert result.records[1]["status"] == "inactive"
+```
 
+### Date Tests
 
-# --- Date Tests ---
+Note on fastavro date behavior: Avro date logical type (`{"type":"int","logicalType":"date"}`) stores days since Unix epoch. fastavro automatically converts these to `datetime.date` objects when reading. goavro writes the int value; fastavro reads and converts.
 
-
+```python
+@pytest.mark.skip(reason="not yet implemented")
 def test_date_iso(build_path):
     result = run_fixture(build_path, "date_iso")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -245,6 +129,7 @@ def test_date_iso(build_path):
     assert result.records[2]["event_date"] == datetime.date(1999, 12, 31)
 
 
+@pytest.mark.skip(reason="not yet implemented")
 def test_date_custom_format(build_path):
     result = run_fixture(build_path, "date_custom_format")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -254,6 +139,7 @@ def test_date_custom_format(build_path):
     assert result.records[2]["event_date"] == datetime.date(1999, 12, 31)
 
 
+@pytest.mark.skip(reason="not yet implemented")
 def test_date_invalid_components(build_path):
     result = run_fixture(build_path, "date_invalid_components")
     assert result.returncode != 0, "Command should have failed"
@@ -264,6 +150,7 @@ def test_date_invalid_components(build_path):
     ), f"Error should mention invalid date: {result.stderr} {result.stdout}"
 
 
+@pytest.mark.skip(reason="not yet implemented")
 def test_date_mixed_types(build_path):
     result = run_fixture(build_path, "date_mixed_types")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -274,11 +161,14 @@ def test_date_mixed_types(build_path):
     assert result.records[1]["event_name"] == "Workshop"
     assert result.records[1]["event_date"] == datetime.date(2024, 6, 20)
     assert result.records[1]["attendees"] == 50
+```
 
+### Time Tests
 
-# --- Time Tests ---
+Note on fastavro time-micros behavior: Avro time-micros logical type (`{"type":"long","logicalType":"time-micros"}`) stores microseconds since midnight. fastavro converts these to `datetime.time` objects. If goavro writes raw microsecond longs, fastavro will handle the conversion.
 
-
+```python
+@pytest.mark.skip(reason="not yet implemented")
 def test_time_iso(build_path):
     result = run_fixture(build_path, "time_iso")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -288,6 +178,7 @@ def test_time_iso(build_path):
     assert result.records[2]["event_time"] == datetime.time(23, 0, 0)
 
 
+@pytest.mark.skip(reason="not yet implemented")
 def test_time_fractional_seconds(build_path):
     result = run_fixture(build_path, "time_fractional_seconds")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -297,6 +188,7 @@ def test_time_fractional_seconds(build_path):
     assert result.records[2]["event_time"] == datetime.time(0, 0, 0, 1)
 
 
+@pytest.mark.skip(reason="not yet implemented")
 def test_time_custom_format(build_path):
     result = run_fixture(build_path, "time_custom_format")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -306,6 +198,7 @@ def test_time_custom_format(build_path):
     assert result.records[2]["event_time"] == datetime.time(0, 0, 0)
 
 
+@pytest.mark.skip(reason="not yet implemented")
 def test_time_edge_cases(build_path):
     result = run_fixture(build_path, "time_edge_cases")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -313,21 +206,27 @@ def test_time_edge_cases(build_path):
     assert result.records[0]["event_time"] == datetime.time(0, 0, 0)
     assert result.records[1]["event_time"] == datetime.time(23, 59, 59)
     assert result.records[2]["event_time"] == datetime.time(12, 0, 0)
+```
 
+### Timestamp Tests
 
-# --- Timestamp Tests ---
+Note on fastavro timestamp-micros behavior: Avro timestamp-micros logical type (`{"type":"long","logicalType":"timestamp-micros"}`) stores microseconds since epoch UTC. fastavro converts these to `datetime.datetime` objects in UTC. The datetime objects will be timezone-aware (with `tzinfo=datetime.timezone.utc`) or naive depending on fastavro version. Tests should handle both possibilities.
 
-
+```python
+@pytest.mark.skip(reason="not yet implemented")
 def test_timestamp_iso_offset(build_path):
     result = run_fixture(build_path, "timestamp_iso_offset")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
     assert len(result.records) == 2
+    # 2024-03-15T10:30:00+05:00 = 2024-03-15T05:30:00Z
     ts0 = result.records[0]["created_at"]
     assert ts0.replace(tzinfo=None) == datetime.datetime(2024, 3, 15, 5, 30, 0)
+    # 2024-01-01T00:00:00-08:00 = 2024-01-01T08:00:00Z
     ts1 = result.records[1]["created_at"]
     assert ts1.replace(tzinfo=None) == datetime.datetime(2024, 1, 1, 8, 0, 0)
 
 
+@pytest.mark.skip(reason="not yet implemented")
 def test_timestamp_iso_utc(build_path):
     result = run_fixture(build_path, "timestamp_iso_utc")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -338,6 +237,7 @@ def test_timestamp_iso_utc(build_path):
     assert ts1.replace(tzinfo=None) == datetime.datetime(2024, 1, 1, 0, 0, 0)
 
 
+@pytest.mark.skip(reason="not yet implemented")
 def test_timestamp_custom_format(build_path):
     result = run_fixture(build_path, "timestamp_custom_format")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -348,26 +248,33 @@ def test_timestamp_custom_format(build_path):
     assert ts1.replace(tzinfo=None) == datetime.datetime(2000, 1, 1, 0, 0, 0)
 
 
+@pytest.mark.skip(reason="not yet implemented")
 def test_timestamp_epoch(build_path):
     result = run_fixture(build_path, "timestamp_epoch")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
     assert len(result.records) == 2
+    # 1710499800 seconds = 2024-03-15T13:30:00Z
     ts0 = result.records[0]["created_at"]
-    assert ts0.replace(tzinfo=None) == datetime.datetime(2024, 3, 15, 10, 50, 0)
+    assert ts0.replace(tzinfo=None) == datetime.datetime(2024, 3, 15, 13, 30, 0)
+    # 946684800 seconds = 2000-01-01T00:00:00Z
     ts1 = result.records[1]["created_at"]
     assert ts1.replace(tzinfo=None) == datetime.datetime(2000, 1, 1, 0, 0, 0)
 
 
+@pytest.mark.skip(reason="not yet implemented")
 def test_timestamp_timezone_conversion(build_path):
     result = run_fixture(build_path, "timestamp_timezone_conversion")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
     assert len(result.records) == 2
+    # 2024-03-15T10:00:00+05:00 = 2024-03-15T05:00:00Z
     ts0 = result.records[0]["created_at"]
     assert ts0.replace(tzinfo=None) == datetime.datetime(2024, 3, 15, 5, 0, 0)
+    # 2024-07-01T20:00:00-04:00 = 2024-07-02T00:00:00Z
     ts1 = result.records[1]["created_at"]
     assert ts1.replace(tzinfo=None) == datetime.datetime(2024, 7, 2, 0, 0, 0)
 
 
+@pytest.mark.skip(reason="not yet implemented")
 def test_timestamp_invalid(build_path):
     result = run_fixture(build_path, "timestamp_invalid")
     assert result.returncode != 0, "Command should have failed"
@@ -377,11 +284,12 @@ def test_timestamp_invalid(build_path):
         or "hour" in result.stderr.lower()
         or "timestamp" in result.stderr.lower()
     ), f"Error should mention invalid timestamp: {result.stderr} {result.stdout}"
+```
 
+### Walking Skeleton Test
 
-# --- Walking Skeleton ---
-
-
+```python
+@pytest.mark.skip(reason="not yet implemented")
 def test_all_new_types_mixed(build_path):
     result = run_fixture(build_path, "all_new_types_mixed")
     assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -404,3 +312,19 @@ def test_all_new_types_mixed(build_path):
     assert bob["shift_start"] == datetime.time(8, 30, 0)
     ts_bob = bob["last_login"]
     assert ts_bob.replace(tzinfo=None) == datetime.datetime(2024, 3, 14, 17, 45, 0)
+```
+
+---
+
+## Avro Type Assertion Notes
+
+These are the expected Python types returned by fastavro for each Avro logical type. If goavro does not set the logical type metadata correctly, fastavro may return raw integers instead. In that case, tests need adjustment:
+
+| Avro Type | Expected Python Type | Fallback (raw) |
+|-----------|---------------------|-----------------|
+| `{"type":"int","logicalType":"date"}` | `datetime.date` | `int` (days since epoch) |
+| `{"type":"long","logicalType":"time-micros"}` | `datetime.time` | `int` (microseconds) |
+| `{"type":"long","logicalType":"timestamp-micros"}` | `datetime.datetime` | `int` (microseconds since epoch) |
+| `{"type":"enum","name":"...","symbols":[...]}` | `str` | N/A |
+
+If during implementation fastavro returns raw integers for date/time/timestamp, the converter should store the raw int value and assertions should use epoch arithmetic. The test-code-specs above assume fastavro handles the logical type conversion, which is the standard behavior.

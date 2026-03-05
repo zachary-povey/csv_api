@@ -1,0 +1,20 @@
+fields:
+  - name: priority
+    logical_type:
+      name: enum
+      args:
+        permitted_values:
+          - low
+          - medium
+          - high
+    representations:
+      - pattern: "(?P<value>low|medium|high)"
+      - pattern: "^(?:1)$"
+        args:
+          value: low
+      - pattern: "^(?:2)$"
+        args:
+          value: medium
+      - pattern: "^(?:3)$"
+        args:
+          value: high

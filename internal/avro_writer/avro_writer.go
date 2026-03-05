@@ -19,7 +19,7 @@ const tmpl string = `
 	"fields": [
 	{{- $total := len . }}
 	{{- range $i, $value := . }}
-		{"name": "{{$value.Name}}", "type": {{map_type_json $value.LogicalTypeConfig}}}{{if ne $i (subtract $total 1)}},{{end}}
+		{"name": "{{$value.Name}}", "type": {{map_type_json $value}}}{{if ne $i (subtract $total 1)}},{{end}}
 	{{- end }}
 	]
 }`
@@ -41,23 +41,34 @@ var funcMap template.FuncMap = template.FuncMap{
 		}
 		return avro_type
 	},
-	"map_type_json": func(logical_type_config config.LogicalTypeConfig) string {
-		switch ltc := logical_type_config.(type) {
+	"map_type_json": func(field config.FieldConfig) string {
+		switch ltc := field.LogicalTypeConfig.(type) {
 		case config.IntegerTypeConfig:
 			return `"long"`
 		case config.StringTypeConfig:
 			return `"string"`
 		case config.DecimalTypeConfig:
 			if ltc.Args.AsFloat {
-				// Use double for float decimals
 				return `"double"`
 			} else {
-				// Use Avro logical decimal type with precision and scale
 				return fmt.Sprintf(`{"type":"bytes","logicalType":"decimal","precision":%d,"scale":%d}`,
 					ltc.Args.Precision, ltc.Args.Scale)
 			}
+		case config.EnumTypeConfig:
+			symbols := make([]string, len(ltc.Args.PermittedValues))
+			for i, v := range ltc.Args.PermittedValues {
+				symbols[i] = fmt.Sprintf(`"%s"`, v)
+			}
+			return fmt.Sprintf(`{"type":"enum","name":"%s","symbols":[%s]}`,
+				field.Name, strings.Join(symbols, ","))
+		case config.DateTypeConfig:
+			return `{"type":"int","logicalType":"date"}`
+		case config.TimeTypeConfig:
+			return `{"type":"long","logicalType":"time-micros"}`
+		case config.TimestampTypeConfig:
+			return `{"type":"long","logicalType":"timestamp-micros"}`
 		default:
-			panic(fmt.Sprintf("Unknown logical type config: %T", logical_type_config))
+			panic(fmt.Sprintf("Unknown logical type config: %T", field.LogicalTypeConfig))
 		}
 	},
 }

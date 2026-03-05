@@ -1,0 +1,123 @@
+{
+  "feature_id": "logical-types-completion",
+  "description": "Complete parser, Avro writer, and tests for enum, date, time, and timestamp logical types",
+  "implementation_order": "enum -> date -> time -> timestamp",
+  "steps": [
+    {
+      "step_id": "01-01",
+      "title": "Implement enum converter and Avro writer",
+      "description": "Add convert_enum() to converters.go that validates value is in permitted_values. Add EnumTypeConfig case to map_type_json in avro_writer.go producing {\"type\":\"enum\",\"name\":\"<field_name>\",\"symbols\":[...]}. Note: map_type_json needs access to field name for enum schema.",
+      "files_to_modify": ["internal/parser/converters.go", "internal/avro_writer/avro_writer.go"],
+      "acceptance_criteria": [
+        "convert_enum returns value string when in permitted_values",
+        "convert_enum returns error when value not in permitted_values",
+        "Avro schema generated with enum type, name from field, symbols from permitted_values"
+      ],
+      "depends_on": []
+    },
+    {
+      "step_id": "01-02",
+      "title": "Create enum test fixtures and tests",
+      "description": "Create fixtures: enum_basic, enum_case_insensitive, enum_value_remap, enum_multiple_representations, enum_invalid_value, enum_mixed_types. Add corresponding test functions.",
+      "files_to_modify": ["tests/test_logical_types.py", "tests/fixtures/"],
+      "acceptance_criteria": [
+        "All 6 enum tests pass",
+        "Case-insensitive input works via regex representation",
+        "Value remapping via static args works",
+        "Invalid enum value produces error"
+      ],
+      "depends_on": ["01-01"]
+    },
+    {
+      "step_id": "02-01",
+      "title": "Implement date converter and Avro writer",
+      "description": "Add convert_date() to converters.go that takes year/month/day args, validates them, and returns days since Unix epoch as int32. Add DateTypeConfig case to map_type_json returning {\"type\":\"int\",\"logicalType\":\"date\"}.",
+      "files_to_modify": ["internal/parser/converters.go", "internal/avro_writer/avro_writer.go"],
+      "acceptance_criteria": [
+        "convert_date returns correct days-since-epoch for valid dates",
+        "convert_date returns error for invalid dates (month 13, Feb 29 non-leap, etc.)",
+        "Avro schema has int type with date logicalType"
+      ],
+      "depends_on": []
+    },
+    {
+      "step_id": "02-02",
+      "title": "Create date test fixtures and tests",
+      "description": "Create fixtures: date_iso, date_custom_format, date_invalid_components, date_mixed_types. Add corresponding test functions.",
+      "files_to_modify": ["tests/test_logical_types.py", "tests/fixtures/"],
+      "acceptance_criteria": [
+        "All 4 date tests pass",
+        "ISO and custom formats produce same output",
+        "Invalid date components produce error"
+      ],
+      "depends_on": ["02-01"]
+    },
+    {
+      "step_id": "03-01",
+      "title": "Implement time converter and Avro writer",
+      "description": "Add convert_time() to converters.go that takes hour/minute/second/millisecond/microsecond args (with defaults), validates ranges, and returns microseconds since midnight as int64. Add TimeTypeConfig case to map_type_json returning {\"type\":\"long\",\"logicalType\":\"time-micros\"}.",
+      "files_to_modify": ["internal/parser/converters.go", "internal/avro_writer/avro_writer.go"],
+      "acceptance_criteria": [
+        "convert_time returns correct microseconds for valid times",
+        "Missing time args default to 0",
+        "Fractional seconds handled correctly",
+        "Avro schema has long type with time-micros logicalType"
+      ],
+      "depends_on": []
+    },
+    {
+      "step_id": "03-02",
+      "title": "Create time test fixtures and tests",
+      "description": "Create fixtures: time_iso, time_fractional_seconds, time_custom_format, time_edge_cases. Add corresponding test functions.",
+      "files_to_modify": ["tests/test_logical_types.py", "tests/fixtures/"],
+      "acceptance_criteria": [
+        "All 4 time tests pass",
+        "Fractional seconds with varying precision work",
+        "Edge cases (midnight, 23:59:59) work"
+      ],
+      "depends_on": ["03-01"]
+    },
+    {
+      "step_id": "04-01",
+      "title": "Implement timestamp converter and Avro writer",
+      "description": "Add convert_timestamp() to converters.go supporting two parameter sets: (1) component-based with year/month/day/hour/minute/second/millisecond/microsecond/timezone args, (2) epoch-based with value/offset/precision args. Returns microseconds since epoch UTC as int64. Add TimestampTypeConfig case to map_type_json returning {\"type\":\"long\",\"logicalType\":\"timestamp-micros\"}.",
+      "files_to_modify": ["internal/parser/converters.go", "internal/avro_writer/avro_writer.go"],
+      "acceptance_criteria": [
+        "Component-based conversion produces correct UTC microseconds",
+        "Epoch-based conversion with precision arg works",
+        "Timezone offset correctly applied to produce UTC output",
+        "Missing optional args default correctly",
+        "Avro schema has long type with timestamp-micros logicalType"
+      ],
+      "depends_on": []
+    },
+    {
+      "step_id": "04-02",
+      "title": "Create timestamp test fixtures and tests",
+      "description": "Create fixtures: timestamp_iso_offset, timestamp_iso_utc, timestamp_custom_format, timestamp_epoch, timestamp_timezone_conversion, timestamp_invalid. Add corresponding test functions.",
+      "files_to_modify": ["tests/test_logical_types.py", "tests/fixtures/"],
+      "acceptance_criteria": [
+        "All 6 timestamp tests pass",
+        "Timezone conversion to UTC works",
+        "Epoch-based conversion with precision works",
+        "Invalid components produce error"
+      ],
+      "depends_on": ["04-01"]
+    },
+    {
+      "step_id": "05-01",
+      "title": "Walking skeleton: all new types combined test",
+      "description": "Create all_new_types_mixed fixture with enum, date, time, and timestamp fields alongside string and integer. Add test_all_new_types_mixed test.",
+      "files_to_modify": ["tests/test_logical_types.py", "tests/fixtures/"],
+      "acceptance_criteria": [
+        "All 6 logical types (string, integer, decimal existing + enum, date, time, timestamp new) work together",
+        "Full pipeline processes all types in single run"
+      ],
+      "depends_on": ["01-01", "02-01", "03-01", "04-01"]
+    }
+  ],
+  "validation": {
+    "status": "approved",
+    "note": "Roadmap derived from distill specifications"
+  }
+}

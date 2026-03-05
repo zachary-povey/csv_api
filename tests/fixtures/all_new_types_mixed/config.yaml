@@ -1,0 +1,36 @@
+fields:
+  - name: employee_name
+    logical_type:
+      name: string
+    representations:
+      - pattern: "(?P<value>.*)"
+  - name: employee_id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "(?P<value>[0-9]+)"
+  - name: department
+    logical_type:
+      name: enum
+      args:
+        permitted_values:
+          - engineering
+          - marketing
+          - sales
+    representations:
+      - pattern: "(?P<value>engineering|marketing|sales)"
+  - name: hire_date
+    logical_type:
+      name: date
+    representations:
+      - pattern: "(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})"
+  - name: shift_start
+    logical_type:
+      name: time
+    representations:
+      - pattern: "(?P<hour>[0-9]{2}):(?P<minute>[0-9]{2}):(?P<second>[0-9]{2})"
+  - name: last_login
+    logical_type:
+      name: timestamp
+    representations:
+      - pattern: "(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})T(?P<hour>[0-9]{2}):(?P<minute>[0-9]{2}):(?P<second>[0-9]{2})(?:Z)"

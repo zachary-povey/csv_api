@@ -1,0 +1,6 @@
+fields:
+  - name: event_date
+    logical_type:
+      name: date
+    representations:
+      - pattern: "(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})"
