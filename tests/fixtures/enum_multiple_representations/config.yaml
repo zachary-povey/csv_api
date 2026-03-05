@@ -9,12 +9,12 @@ fields:
           - high
     representations:
       - pattern: "(?P<value>low|medium|high)"
-      - pattern: "^(?:1)$"
+      - pattern: "^1$"
         args:
           value: low
-      - pattern: "^(?:2)$"
+      - pattern: "^2$"
         args:
           value: medium
-      - pattern: "^(?:3)$"
+      - pattern: "^3$"
         args:
           value: high

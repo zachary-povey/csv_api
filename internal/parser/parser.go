@@ -2,10 +2,9 @@ package parser
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
 	"sync"
-
-	"maps"
 
 	"github.com/zachary-povey/csv_api/internal/config"
 	"github.com/zachary-povey/csv_api/internal/error_tracking"
@@ -128,11 +127,11 @@ func ParseData(config *config.Config, input_channel chan []*string, output_chann
 					any_matched = true
 
 					// merge args from regex with static ones on representation
-					// values from regex match have priority if there is overlap
-					maps.Copy(field_args, args)
-					for k, v := range rep.Args {
+					// values from config match have priority if there is overlap
+					for k, v := range args {
 						field_args[k] = v
 					}
+					maps.Copy(field_args, rep.Args)
 					break
 				}
 			}
