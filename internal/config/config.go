@@ -169,7 +169,6 @@ func LoadConfig(filename string) (*Config, error) {
 			return nil, err
 		}
 		validate.Struct(config.Fields[i].LogicalTypeConfig)
-		fmt.Printf("%+v\n", config.Fields[i].LogicalTypeConfig)
 	}
 
 	return &config, nil

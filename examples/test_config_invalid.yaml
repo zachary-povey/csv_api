@@ -1,0 +1,23 @@
+fields:
+  - name: column_1
+    logical_type:
+      name: enum
+      args:
+        as_float: true
+        permitted_values: ["HI"]
+        # precision: 10
+        # scale: 2
+    representations:
+      - pattern: .*
+  - name: column_2
+    logical_type:
+      name: integer
+      args:
+        flatbread: roti
+    representations:
+      - pattern: "([0-9]+)"
+  - name: column_3
+    logical_type:
+      name: integer
+    representations:
+      - pattern: " *(?P<value>[0-9]+) *gbp *"

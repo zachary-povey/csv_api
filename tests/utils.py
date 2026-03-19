@@ -27,7 +27,7 @@ class FixtureResult:
 
 def get_build_path() -> Path:
     """Returns the path to the csv_api binary."""
-    return Path(__file__).parent.parent / "build" / "csv_api"
+    return Path(__file__).parent.parent / "build" / "csv-api"
 
 
 def run_csv_api(
