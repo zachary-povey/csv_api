@@ -4,7 +4,7 @@
 
 The tool has a three-layer architecture for each field:
 
-1. **Representation layer** (input flexibility): Regex patterns match raw CSV strings. Named capture groups extract parameters. Static args on representations provide fixed values. The first matching representation wins. Regex-extracted args override static args on overlap.
+1. **Representation layer** (input flexibility): Regex patterns match raw CSV strings. Named capture groups extract parameters. Static args on representations provide fixed values. The first matching representation wins. Static args override regex-extracted args on overlap.
 2. **Converter layer** (output correctness): Receives the merged args dict and the logical type config. Validates args are present and valid. Converts to the output type. **Never sees the raw input string.**
 3. **Avro writer layer** (output schema): Maps logical type configs to Avro schema fragments. Defines the output schema, not the input format.
 

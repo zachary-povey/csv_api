@@ -4,9 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build and Run Commands
 
-- **Build**: `./scripts/build.sh` (creates binary at `./build/csv_api`)
-- **Run**: `./build parse --config_path <config> --data_path <csv> --output_path <output>`
-- **Validate config**: `./build validate_config --config_path <config>`
+- **Build**: `./scripts/build.sh` (creates binary at `./build/csv-api`)
+- **Run**: `./build/csv-api parse --config-path <config> --input-path <csv> --output-path <output>` (short flags: `-c`, `-i`, `-o`)
+- **Validate config**: `./build/csv-api validate_config --config-path <config>`
+- **Test**: build first, then `python3 -m pytest tests` (needs `pip install -r tests/requirements.txt`)
 
 ## Architecture Overview
 
@@ -34,7 +35,7 @@ Fields are defined in YAML with:
 
 - `name`: Field identifier
 - `logical_type`: Type definition (name + optional args for decimals/enums)
-- `representations`: Array of regex patterns for validation, with optional named groups and null handling
+- `representations`: Array of regex patterns, tried in order (first match wins). Named capture groups and static `args` supply the type's value args; static args win on overlap. See README.md for the full reference.
 
 The pipeline processes data concurrently using goroutines and channels, with error tracking that can halt processing on fatal errors or collect validation errors for reporting.
 
@@ -45,8 +46,7 @@ To add a new logical type to the system, you need to update several components:
 ### 1. Config System (`internal/config/config.go`)
 - Add new type constant to `LogicalType` enum
 - Create corresponding `*TypeConfig` struct implementing `LogicalTypeConfig` interface
-- Update `ParseLogicalType()` function to handle the new type
-- Add type mapping in `logical_type_mappings`
+- Add a case to the switch in `FieldConfig.UnmarshalTypeConfigs()`
 
 ### 2. Parser (`internal/parser/converters.go`)
 - Add new case in `Convert()` function switch statement

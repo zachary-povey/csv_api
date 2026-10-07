@@ -47,11 +47,11 @@ def run_csv_api(
     cmd = [
         str(build_path),
         "parse",
-        "--config_path",
+        "--config-path",
         str(config_path),
-        "--data_path",
+        "--input-path",
         str(data_path),
-        "--output_path",
+        "--output-path",
         str(output_path),
     ]
     return subprocess.run(cmd, capture_output=True, text=True)

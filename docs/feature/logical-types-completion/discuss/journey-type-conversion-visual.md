@@ -12,7 +12,7 @@ Representation regex match (first match wins)
 Extract named capture groups as args
     |
     v
-Merge with static args (regex wins on overlap)
+Merge with static args (static args win on overlap)
     |
     v
 Converter receives args dict (never sees raw input)

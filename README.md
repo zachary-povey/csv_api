@@ -59,6 +59,12 @@ Validate a csv file against a config and convert it to Avro:
 
 The command exits non-zero and prints an error report if the file does not match the config.
 
+Check a config file on its own:
+
+```sh
+./build/csv-api validate_config -c config.yaml
+```
+
 ## Configuration
 
 A config lists the fields expected in the file. Each field has a logical type (what the value means) and one or more representations (how that value is written in the csv).

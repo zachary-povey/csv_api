@@ -5,7 +5,7 @@ journey:
 
   architecture_summary: |
     CSV string -> Representation regex match (first wins) -> Extract named groups
-    -> Merge with static args (regex wins on overlap) -> Converter receives args dict
+    -> Merge with static args (static args win on overlap) -> Converter receives args dict
     -> Typed output value -> Avro schema validates -> Written to Avro file.
     Representations handle input flexibility. Converters handle output correctness.
     Converters never see raw input strings.

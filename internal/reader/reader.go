@@ -27,7 +27,7 @@ func ReadFile(filepath string, config *config.Config, channel chan []*string, wg
 	header, headerErr := reader.Read()
 
 	if headerErr != nil {
-		errTracker.AddReportError(fmt.Sprintf("error reading CSV header: %s", err), "file")
+		errTracker.AddReportError(fmt.Sprintf("error reading CSV header: %s", headerErr), "file")
 		return
 	}
 

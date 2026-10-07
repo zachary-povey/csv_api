@@ -95,7 +95,7 @@ func main() {
 					},
 				},
 				Action: func(cCtx *cli.Context) error {
-					_, err := config.LoadConfig(cCtx.Path("config_path"))
+					_, err := config.LoadConfig(cCtx.Path("config-path"))
 					if err != nil {
 						return fmt.Errorf("%w\n%s", err, color.RedString("✗ config file is not valid"))
 					}
