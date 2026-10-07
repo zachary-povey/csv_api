@@ -21,7 +21,7 @@ The solution to this problem, as I see it is:
 - the validation step should also convert the data to a well-typed format for downstream processes to use
 - validation failures should be reported in good detail
 
-Scope:
+### Scope
 
 - to formally specify the bespoke physical representation of logical types agreed by the csv API
 - to validate input files match this specification
@@ -30,7 +30,9 @@ Scope:
 - partial conversion (bad rows dropped)
 - error reports
 - custom errors
-  Out of scope
+
+### Out of scope
+
 - validation of logical values
 - combinations of fields etc
 - capturing contextual information (e.g when a file was received, allow use cases to be sorted via config overrides)
@@ -39,25 +41,114 @@ Scope:
 
 At some point, the data will have to be converted, do this first formally. If the expectations are not met, errors would have occurred anyway
 
-### Example config
+## Usage
+
+Build the binary (written to `build/csv-api`):
+
+```sh
+./scripts/build.sh
+```
+
+Validate a csv file against a config and convert it to Avro:
+
+```sh
+./build/csv-api parse --config-path config.yaml --input-path data.csv --output-path data.avro
+# short form
+./build/csv-api parse -c config.yaml -i data.csv -o data.avro
+```
+
+The command exits non-zero and prints an error report if the file does not match the config.
+
+## Configuration
+
+A config lists the fields expected in the file. Each field has a logical type (what the value means) and one or more representations (how that value is written in the csv).
 
 ```yaml
-name: MyDesciptiveName # used as avro schema name
-allow_extra_fields: true
 fields:
-  some_date:
-    header_patterns:
-      - ^SomeDate$
-    logical_type: date
-    required: true # if it should be present in the file
-    nullable: true # if the value of the reolved logical type can be null
-    physical_representations:
-      - pattern: "-'"
-        is_null: true
-      - pattern: "start"
+  - name: some_date # must match the csv column header exactly
+    logical_type:
+      name: date
+    representations:
+      # a fixed value: the literal "start" means 2020-01-01
+      - pattern: "^start$"
         args:
           year: 2020
           month: 1
           day: 1
-      - pattern: "[0-9]{4}-[0-9]{2}-[0-9]{2}"
+      # named capture groups supply the type's args
+      - pattern: "^(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})$"
+
+  - name: amount
+    logical_type:
+      name: decimal
+      args: # type args apply to the whole column
+        precision: 10
+        scale: 2
+    representations:
+      - pattern: "^£?(?P<value>[0-9]+\\.[0-9]{2})$"
+
+  - name: status
+    logical_type:
+      name: enum
+      args:
+        permitted_values: [active, inactive]
+    representations:
+      - pattern: "^(active|inactive)$"
+      # remap a variant label onto a permitted value
+      - pattern: "^live$"
+        args:
+          value: active
 ```
+
+### Fields
+
+`fields` is a list, and its order sets the order of fields in the output schema. A field is matched to a csv column by an exact header match on `name`. Columns in the file that are not in the config are ignored.
+
+### Logical types and type args
+
+`logical_type.name` is one of the types below. Some types take `args` under `logical_type`. These are settings that must be the same for every value in the column (such as decimal precision or the permitted values of an enum), so they live on the type rather than on a representation.
+
+| Type | Type args | Avro output |
+| --- | --- | --- |
+| `string` | | `string` |
+| `integer` | | `long` |
+| `decimal` | `precision` and `scale`, or `as_float: true` | `bytes` with `decimal` logical type, or `double` if `as_float` |
+| `enum` | `permitted_values` (required) | `enum` named after the field |
+| `date` | | `int` with `date` logical type |
+| `time` | | `long` with `time-micros` logical type |
+| `timestamp` | | `long` with `timestamp-micros` logical type (UTC) |
+
+### Representations
+
+Each value is tested against the field's representations in order, and the first one whose `pattern` matches is used. If none match, the cell is reported as an error. Patterns are Go regular expressions and are not anchored, so use `^` and `$` to match the whole value.
+
+A representation produces a set of value args, which are handed to the type's converter:
+
+- **Named capture groups** become args with the group's name, e.g. `(?P<year>[0-9]{4})` gives `year`.
+- **A single unnamed capture group** is treated as `value`. A pattern with no capture groups at all makes the whole match `value`.
+- **Static `args`** on the representation add fixed values. If a static arg and a capture group share a name, the static arg wins.
+
+The value args each type accepts:
+
+| Type | Value args |
+| --- | --- |
+| `string`, `integer`, `enum` | `value` |
+| `decimal` | `value`, or `integer_part` and `decimal_part` |
+| `date` | `year`, `month`, `day` |
+| `time` | `hour`, `minute`, `second`, `millisecond`, `microsecond` (all optional, default 0) |
+| `timestamp` | `value` and `precision` (`seconds`, `milliseconds` or `microseconds`), with optional `offset`; or `year`, `month`, `day` with optional `hour`, `minute`, `second`, `millisecond`, `microsecond` and `timezone` (e.g. `+01:00`) |
+
+The converters check that the args make a valid value (e.g. a real calendar date, an enum value in `permitted_values`), and report a cell error if not.
+
+## Planned
+
+These are intended but not built yet:
+
+- `name`: a config-level name for the Avro schema (currently always `test_schema`)
+- `header_patterns`: regex matching of csv headers to fields, instead of an exact match on `name`
+- `allow_extra_fields`: option to reject columns not in the config (currently they are always ignored)
+- `required`: per-field option to allow a column to be missing (currently every field is required)
+- `nullable` and `is_null`: allow null values, with representations that resolve to null (`is_null` is accepted in config but has no effect yet)
+- partial conversion: drop bad rows and carry on (currently processing stops at the first bad cell)
+- checking at config load that every representation provides the args its type needs (currently this is only caught per cell at runtime)
+- streaming output to stdout, Parquet output, and a structured (json) error report
