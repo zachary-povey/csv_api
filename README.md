@@ -181,7 +181,7 @@ The converters check that the args make a valid value (e.g. a real calendar date
 
 ## Planned
 
-These are intended but not built yet:
+These are intended but not built yet. Work is tracked as tasks with [Backlog.md](https://github.com/MrLesk/Backlog.md) in `backlog/` (run `backlog board` or `backlog task list`).
 
 - `name`: a config-level name for the Avro schema (currently always `test_schema`)
 - `header_patterns`: regex matching of csv headers to fields, instead of an exact match on `name`
