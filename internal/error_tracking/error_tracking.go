@@ -1,14 +1,8 @@
 package error_tracking
 
 import (
+	"fmt"
 	"sync"
-)
-
-const (
-	exErrBuffer  int = 5
-	repErrBuffer int = 5
-	killChBuffer int = 5
-	maxErrors    int = 10
 )
 
 type ReportErrorType string
@@ -23,85 +17,105 @@ type ErrorReport struct {
 	FileErrors []string
 	RowErrors  []string
 	CellErrors []string
+	// set when collection stopped before the whole file was checked
+	StoppedEarly bool
+	// why processing was stopped, e.g. fail-fast
+	StopReason string
+	// set when invalid data values drop rows rather than being reported
+	DataFailuresDropped bool
 }
 
 func (report ErrorReport) ContainsErrors() bool {
 	return (len(report.FileErrors) + len(report.RowErrors) + len(report.CellErrors)) > 0
 }
 
-type ReportError struct {
-	Value string
-	Type  ReportErrorType
+func (report ErrorReport) count() int {
+	return len(report.FileErrors) + len(report.RowErrors) + len(report.CellErrors)
 }
 
+// ErrorTracker collects errors from the pipeline goroutines and closes KillCh
+// once processing should stop: on any execution error, on the first report
+// error when failing fast, or once maxErrors report errors have been collected.
 type ErrorTracker struct {
 	ExecutionErrors []error
 	ErrorReport     ErrorReport
 	KillCh          chan struct{}
-	waitGroup       *sync.WaitGroup
-	exErrQ          chan error
-	repErrQ         chan ReportError
+
+	failFast  bool
+	maxErrors int // 0 means no limit
+	mu        sync.Mutex
+	killOnce  sync.Once
 }
 
-func NewErrorTracker() ErrorTracker {
-	tracker := ErrorTracker{
-		exErrQ:  make(chan error, exErrBuffer),
-		repErrQ: make(chan ReportError, repErrBuffer),
-		KillCh:  make(chan struct{}, killChBuffer),
+func NewErrorTracker(failFast bool, maxErrors int) *ErrorTracker {
+	return &ErrorTracker{
+		KillCh:    make(chan struct{}),
+		failFast:  failFast,
+		maxErrors: maxErrors,
 	}
+}
 
-	var waitGroup sync.WaitGroup
-	waitGroup.Add(2)
-	tracker.waitGroup = &waitGroup
+func (tracker *ErrorTracker) kill() {
+	tracker.killOnce.Do(func() { close(tracker.KillCh) })
+}
 
-	return tracker
+// Killed reports whether processing has been told to stop.
+func (tracker *ErrorTracker) Killed() bool {
+	select {
+	case <-tracker.KillCh:
+		return true
+	default:
+		return false
+	}
 }
 
 func (tracker *ErrorTracker) AddExecutionError(err error) {
-	tracker.exErrQ <- err
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	tracker.ExecutionErrors = append(tracker.ExecutionErrors, err)
+	tracker.kill()
 }
 
 func (tracker *ErrorTracker) AddReportError(err string, errType ReportErrorType) {
-	tracker.repErrQ <- ReportError{err, errType}
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+
+	limit := tracker.maxErrors
+	if tracker.failFast {
+		limit = 1
+	}
+	if limit > 0 && tracker.ErrorReport.count() >= limit {
+		// rows already in flight when the limit was hit
+		tracker.ErrorReport.StoppedEarly = true
+		return
+	}
+
+	switch errType {
+	case File:
+		tracker.ErrorReport.FileErrors = append(tracker.ErrorReport.FileErrors, err)
+	case Row:
+		tracker.ErrorReport.RowErrors = append(tracker.ErrorReport.RowErrors, err)
+	case Cell:
+		tracker.ErrorReport.CellErrors = append(tracker.ErrorReport.CellErrors, err)
+	}
+
+	if limit > 0 && tracker.ErrorReport.count() >= limit {
+		if tracker.failFast {
+			tracker.ErrorReport.StopReason = "fail-fast is on"
+		} else {
+			tracker.ErrorReport.StopReason = fmt.Sprintf("--max-errors (%d) was reached", tracker.maxErrors)
+		}
+		tracker.kill()
+	}
 }
 
-func (tracker *ErrorTracker) Start() {
-	killOnce := sync.OnceFunc(func() {
-		close(tracker.KillCh)
-	})
-
-	go func() {
-		for exErr := range tracker.exErrQ {
-			tracker.ExecutionErrors = append(tracker.ExecutionErrors, exErr)
-			killOnce()
-		}
-		tracker.waitGroup.Done()
-	}()
-
-	go func() {
-		count := 0
-		for repErr := range tracker.repErrQ {
-			switch repErr.Type {
-			case File:
-				tracker.ErrorReport.FileErrors = append(tracker.ErrorReport.FileErrors, repErr.Value)
-			case Row:
-				tracker.ErrorReport.RowErrors = append(tracker.ErrorReport.RowErrors, repErr.Value)
-			case Cell:
-				tracker.ErrorReport.CellErrors = append(tracker.ErrorReport.CellErrors, repErr.Value)
-			}
-
-			count += 1
-			if count > maxErrors {
-				killOnce()
-				break
-			}
-		}
-		tracker.waitGroup.Done()
-	}()
-}
-
-func (tracker *ErrorTracker) Stop() {
-	close(tracker.exErrQ)
-	close(tracker.repErrQ)
-	tracker.waitGroup.Wait()
+// MarkStoppedEarly records that the file was not read to the end. The reason
+// is only used if no reason has been recorded already.
+func (tracker *ErrorTracker) MarkStoppedEarly(reason string) {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	tracker.ErrorReport.StoppedEarly = true
+	if tracker.ErrorReport.StopReason == "" {
+		tracker.ErrorReport.StopReason = reason
+	}
 }

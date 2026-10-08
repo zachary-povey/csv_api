@@ -87,7 +87,7 @@ func generateSchema(config *config.Config) string {
 	return result
 }
 
-func WriteFile(filepath string, config *config.Config, channel chan map[string]any, wg *sync.WaitGroup, errTracker error_tracking.ErrorTracker) {
+func WriteFile(filepath string, config *config.Config, channel chan map[string]any, wg *sync.WaitGroup, errTracker *error_tracking.ErrorTracker) {
 	defer wg.Done()
 
 	avroSchema := generateSchema(config)
@@ -106,12 +106,14 @@ func WriteFile(filepath string, config *config.Config, channel chan map[string]a
 		},
 	)
 	if writerErr != nil {
-		errTracker.AddExecutionError(fmt.Errorf("error setting up avro writer: %s", err))
+		errTracker.AddExecutionError(fmt.Errorf("error setting up avro writer: %s", writerErr))
 		return
 	}
 
 	for row := range channel {
-		writer.Append([]map[string]interface{}{row})
+		if err := writer.Append([]map[string]interface{}{row}); err != nil {
+			errTracker.AddExecutionError(fmt.Errorf("error writing avro record: %s", err))
+			return
+		}
 	}
-
 }

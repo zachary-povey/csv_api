@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Build**: `./scripts/build.sh` (creates binary at `./build/csv-api`)
 - **Run**: `./build/csv-api parse --config-path <config> --input-path <csv> --output-path <output>` (short flags: `-c`, `-i`, `-o`)
 - **Validate config**: `./build/csv-api validate_config --config-path <config>`
-- **Test**: build first, then `python3 -m pytest tests` (needs `pip install -r tests/requirements.txt`)
+- **Test**: `python3 -m pytest tests` (builds the binary first; set `BUILD_PATH` to test an existing binary; needs `pip install -r tests/requirements.txt`)
 
 ## Architecture Overview
 
@@ -26,7 +26,8 @@ CSV → Reader Channel → Parser Channel → Avro Writer → Avro File
 ### Key Components
 
 - **Config System** (`internal/config`) - YAML-based field definitions with logical types (string, integer, decimal, enum, timestamp, date, time) and regex validation patterns
-- **Error Tracking** (`internal/error_tracking`) - Centralized error collection with file/row/cell level reporting
+- **Error Tracking** (`internal/error_tracking`) - Centralized error collection with file/row/cell level reporting. Closes `KillCh` to stop the pipeline (execution errors, fail-fast, max-errors); the reader stops on it and the parser keeps draining its input so nothing blocks
+- **Options** (`internal/options`) - Error handling flags for `parse` (`--error-on-data-failures`, `--fail-fast`, `--max-errors`, `--data-failure-report`, `--error-report`), documented in README.md
 - **Type System** - Each field has representations (regex patterns) that map to logical types with optional arguments
 
 ### Configuration Format
@@ -37,7 +38,7 @@ Fields are defined in YAML with:
 - `logical_type`: Type definition (name + optional args for decimals/enums)
 - `representations`: Array of regex patterns, tried in order (first match wins). Named capture groups and static `args` supply the type's value args; static args win on overlap. See README.md for the full reference.
 
-The pipeline processes data concurrently using goroutines and channels, with error tracking that can halt processing on fatal errors or collect validation errors for reporting.
+The pipeline processes data concurrently using goroutines and channels. The reader checks the header synchronously before the goroutines start. Output (and the optional data failure report) is written to temporary files that are only renamed into place when the run succeeds.
 
 ## Adding New Logical Types
 

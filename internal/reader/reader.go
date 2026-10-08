@@ -2,6 +2,7 @@ package reader
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,46 +12,86 @@ import (
 	"github.com/zachary-povey/csv_api/internal/error_tracking"
 )
 
-func ReadFile(filepath string, config *config.Config, channel chan []*string, wg *sync.WaitGroup, errTracker error_tracking.ErrorTracker) {
-	defer wg.Done()
-	defer close(channel)
+// Record is one data row of the input file.
+type Record struct {
+	// line number in the input file where the row starts
+	Line int
+	// all values in the row, as read from the file
+	Raw []string
+	// values for each configured field, in config order
+	Values []*string
+}
 
+type Reader struct {
+	Header []string
+
+	file           *os.File
+	csvReader      *csv.Reader
+	config         *config.Config
+	fieldPositions map[string]*int
+}
+
+// Open opens the data file, reads the header and checks it against the
+// config. The returned execution error is set when the file cannot be read at
+// all; the file error is set when the header is not valid for the config.
+func Open(filepath string, config *config.Config) (reader *Reader, executionErr error, fileErr error) {
 	file, err := os.Open(filepath)
 	if err != nil {
-		errTracker.AddExecutionError(fmt.Errorf("error opening data file: %s", err))
-		return
+		return nil, fmt.Errorf("error opening data file: %w", err), nil
 	}
-	defer file.Close()
 
-	reader := csv.NewReader(file)
-
-	header, headerErr := reader.Read()
-
+	csvReader := csv.NewReader(file)
+	header, headerErr := csvReader.Read()
 	if headerErr != nil {
-		errTracker.AddReportError(fmt.Sprintf("error reading CSV header: %s", headerErr), "file")
-		return
+		file.Close()
+		return nil, nil, fmt.Errorf("error reading CSV header: %s", headerErr)
 	}
 
 	fieldPositions, fieldPosErr := getFieldPositions(config, header)
 	if fieldPosErr != nil {
-		errTracker.AddReportError(fieldPosErr.Error(), "file")
-		return
+		file.Close()
+		return nil, nil, fieldPosErr
 	}
 
-	line := 1
+	return &Reader{
+		Header:         header,
+		file:           file,
+		csvReader:      csvReader,
+		config:         config,
+		fieldPositions: fieldPositions,
+	}, nil, nil
+}
+
+func (r *Reader) ReadRows(channel chan Record, wg *sync.WaitGroup, errTracker *error_tracking.ErrorTracker) {
+	defer wg.Done()
+	defer close(channel)
+	defer r.file.Close()
+
 	for {
-		line += 1
-		input_record, err := reader.Read()
+		input_record, err := r.csvReader.Read()
 		if err == io.EOF {
-			break
-		} else if err != nil {
-			errTracker.AddReportError(err.Error(), "row")
 			return
 		}
-		output_record := []*string{}
+		if errors.Is(err, csv.ErrFieldCount) {
+			// the rest of the file can still be read reliably
+			line, _ := r.csvReader.FieldPos(0)
+			errTracker.AddReportError(fmt.Sprintf("row %d has %d values but the header has %d", line, len(input_record), len(r.Header)), error_tracking.Row)
+			if errTracker.Killed() {
+				errTracker.MarkStoppedEarly("")
+				return
+			}
+			continue
+		} else if err != nil {
+			// e.g. a broken quote: later rows can't be located reliably
+			errTracker.AddReportError(err.Error(), error_tracking.Row)
+			errTracker.MarkStoppedEarly("the file could not be parsed past this point")
+			return
+		}
 
-		for _, fieldName := range config.AllFieldNames() {
-			fieldPosition := fieldPositions[fieldName]
+		line, _ := r.csvReader.FieldPos(0)
+		output_record := []*string{}
+		for _, fieldName := range r.config.AllFieldNames() {
+			fieldPosition := r.fieldPositions[fieldName]
 			if fieldPosition == nil {
 				// aka a missing, non-required, field
 				output_record = append(output_record, nil)
@@ -61,14 +102,12 @@ func ReadFile(filepath string, config *config.Config, channel chan []*string, wg
 
 		select {
 		case <-errTracker.KillCh:
-			fmt.Println("Reader process killed.")
+			errTracker.MarkStoppedEarly("")
 			return
-		case channel <- output_record:
+		case channel <- Record{Line: line, Raw: input_record, Values: output_record}:
 			// message added
 		}
-
 	}
-
 }
 
 func getFieldPositions(config *config.Config, header []string) (map[string]*int, error) {

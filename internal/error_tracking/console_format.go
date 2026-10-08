@@ -40,30 +40,39 @@ func (tracker *ErrorTracker) CombinedExecutionError() error {
 }
 
 func (report *ErrorReport) ConsoleFormat() string {
-	errMsg := ""
+	sections := []string{}
 
 	if len(report.FileErrors) > 0 {
-		errMsg += color.RedString("The following file-level errors were detected:\n")
-		errMsg += FormatBulletList(report.FileErrors) + "\n\n"
+		// no rows are read when the file itself is invalid
+		sections = append(sections,
+			color.RedString("The following file-level errors were detected:\n")+FormatBulletList(report.FileErrors))
 	} else {
-		errMsg += color.CyanString("The file was read from disk successfully and the header was valid and consistent with the declared schema.\n")
+		sections = append(sections,
+			color.CyanString("The file was read from disk successfully and the header was valid and consistent with the declared schema."))
+
+		if len(report.RowErrors) > 0 {
+			sections = append(sections,
+				color.RedString("The following malformed rows were detected:\n")+FormatBulletList(report.RowErrors))
+		} else if !report.StoppedEarly {
+			sections = append(sections, color.CyanString("No malformed rows were found."))
+		}
+
+		if len(report.CellErrors) > 0 {
+			sections = append(sections,
+				color.RedString("The following invalid data values were detected:\n")+FormatBulletList(report.CellErrors))
+		} else if report.DataFailuresDropped {
+			sections = append(sections, color.CyanString("Rows with invalid data values are dropped rather than reported (--error-on-data-failures=false)."))
+		} else if !report.StoppedEarly {
+			sections = append(sections, color.CyanString("No invalid data values were detected."))
+		}
 	}
 
-	if len(report.RowErrors) > 0 {
-		errMsg += color.RedString("The following row level errors were detected:\n")
-		errMsg += FormatBulletList(report.RowErrors) + "\n\n"
-	} else {
-		errMsg += color.CyanString("No malformed rows were found.\n")
+	if report.StoppedEarly {
+		sections = append(sections,
+			color.YellowString("Processing stopped after %d error(s) because %s; the rest of the file was not checked.", report.count(), report.StopReason))
 	}
 
-	if len(report.CellErrors) > 0 {
-		errMsg += color.RedString("The following cell level errors were detected:\n")
-		errMsg += FormatBulletList(report.CellErrors) + "\n"
-	} else {
-		errMsg += color.CyanString("No cell level errors were detected.")
-	}
+	sections = append(sections, color.RedString("✗ The CSV has failed validation"))
 
-	errMsg += color.RedString("\n✗ The CSV has failed validation")
-
-	return errMsg
+	return strings.Join(sections, "\n\n")
 }

@@ -1,3 +1,4 @@
+import csv
 import subprocess
 import tempfile
 import fastavro
@@ -17,12 +18,17 @@ class FixtureResult:
         stdout: Standard output from the process.
         stderr: Standard error from the process.
         records: Parsed Avro records, populated only when returncode is 0.
+        output_exists: Whether the Avro output file exists after the run.
+        data_failure_rows: Rows of the data failure report (header first),
+            populated only when one was requested and written.
     """
 
     returncode: int
     stdout: str
     stderr: str
     records: list[dict] = field(default_factory=list)
+    output_exists: bool = False
+    data_failure_rows: list[list[str]] = field(default_factory=list)
 
 
 def get_build_path() -> Path:
@@ -31,7 +37,7 @@ def get_build_path() -> Path:
 
 
 def run_csv_api(
-    build_path: Path, config_path, data_path, output_path
+    build_path: Path, config_path, data_path, output_path, extra_args=()
 ) -> subprocess.CompletedProcess:
     """Run the csv_api binary with given parameters.
 
@@ -40,6 +46,7 @@ def run_csv_api(
         config_path: Path to the YAML config file.
         data_path: Path to the CSV input file.
         output_path: Path to write the Avro output file.
+        extra_args: Additional command line arguments.
 
     Returns:
         The completed process result.
@@ -53,11 +60,17 @@ def run_csv_api(
         str(data_path),
         "--output-path",
         str(output_path),
+        *extra_args,
     ]
-    return subprocess.run(cmd, capture_output=True, text=True)
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
 
-def run_fixture(build_path: Path, fixture_name: str) -> FixtureResult:
+def run_fixture(
+    build_path: Path,
+    fixture_name: str,
+    extra_args=(),
+    data_failure_report: bool = False,
+) -> FixtureResult:
     """Run csv_api against a named fixture and return the result.
 
     Looks up config.yaml and data.csv from tests/fixtures/<fixture_name>/,
@@ -66,6 +79,9 @@ def run_fixture(build_path: Path, fixture_name: str) -> FixtureResult:
     Args:
         build_path: Path to the csv_api binary.
         fixture_name: Name of the subdirectory under tests/fixtures/.
+        extra_args: Additional command line arguments.
+        data_failure_report: Whether to request a data failure report and
+            read it back into the result.
 
     Returns:
         FixtureResult with returncode, stdout, stderr, and records (if successful).
@@ -86,18 +102,29 @@ def run_fixture(build_path: Path, fixture_name: str) -> FixtureResult:
 
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = Path(tmpdir) / "output.avro"
-        proc = run_csv_api(build_path, config_path, data_path, output_path)
+        report_path = Path(tmpdir) / "data_failures.csv"
+        args = list(extra_args)
+        if data_failure_report:
+            args += ["--data-failure-report", str(report_path)]
+        proc = run_csv_api(build_path, config_path, data_path, output_path, args)
+        output_exists = output_path.exists()
         records = (
             read_avro_file(output_path)
-            if proc.returncode == 0 and output_path.exists()
+            if proc.returncode == 0 and output_exists
             else []
         )
+        data_failure_rows = []
+        if report_path.exists():
+            with open(report_path, newline="") as f:
+                data_failure_rows = list(csv.reader(f))
 
     return FixtureResult(
         returncode=proc.returncode,
         stdout=proc.stdout,
         stderr=proc.stderr,
         records=records,
+        output_exists=output_exists,
+        data_failure_rows=data_failure_rows,
     )
 
 

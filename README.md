@@ -57,13 +57,46 @@ Validate a csv file against a config and convert it to Avro:
 ./build/csv-api parse -c config.yaml -i data.csv -o data.avro
 ```
 
-The command exits non-zero and prints an error report if the file does not match the config.
+The command exits non-zero and prints an error report if the file does not match the config. A failed run never leaves an output file behind.
 
 Check a config file on its own:
 
 ```sh
 ./build/csv-api validate_config -c config.yaml
 ```
+
+### Error handling
+
+Errors fall into three groups:
+
+| Group | Examples | Behaviour |
+| --- | --- | --- |
+| Execution errors | input can't be opened, output can't be written | always fail the run immediately |
+| Format errors | unreadable header, missing column, row with the wrong number of values | always fail the run |
+| Data failures | a value that matches no representation, or fails conversion (e.g. 30 February) | fail the run, unless `--error-on-data-failures=false` |
+
+These flags control how errors are handled. They are choices for whoever runs the tool, not part of the config agreed with the data producer.
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--error-on-data-failures` | `true` | Fail the run on data failures. If `false`, rows containing invalid values are dropped, the rest are written, and a warning gives the number dropped. |
+| `--fail-fast` | `true` | Stop at the first error. If `false`, keep going and report every error found. |
+| `--max-errors` | no limit | With `--fail-fast=false`, stop after collecting this many errors. Dropped rows don't count as errors. |
+| `--data-failure-report` | none | With `--error-on-data-failures=false`, write the dropped rows to this csv file: the original header and values, plus a `__csv_api_error__` column listing every failed value in the row. |
+| `--error-report` | `console` | Where errors are reported. Only `console` is supported for now. |
+
+Boolean flags are turned off with `=false`, e.g. `--fail-fast=false`. Setting `--max-errors` with fail-fast on, or `--data-failure-report` while erroring on data failures, is rejected.
+
+```sh
+# report every problem in the file
+./build/csv-api parse -c config.yaml -i data.csv -o data.avro --fail-fast=false
+
+# convert what's valid, keep the rejected rows for follow-up
+./build/csv-api parse -c config.yaml -i data.csv -o data.avro \
+  --error-on-data-failures=false --data-failure-report rejected.csv
+```
+
+A broken quote stops processing even with `--fail-fast=false`, since the rows after it can't be located reliably.
 
 ## Configuration
 
@@ -155,6 +188,7 @@ These are intended but not built yet:
 - `allow_extra_fields`: option to reject columns not in the config (currently they are always ignored)
 - `required`: per-field option to allow a column to be missing (currently every field is required)
 - `nullable` and `is_null`: allow null values, with representations that resolve to null (`is_null` is accepted in config but has no effect yet)
-- partial conversion: drop bad rows and carry on (currently processing stops at the first bad cell)
+- layered config files: a shared base config with per-producer overrides merged on top (`-c base.yaml -c partner.yaml`)
+- per-field error messages: an optional message in the config, shown when a field's values fail
 - checking at config load that every representation provides the args its type needs (currently this is only caught per cell at runtime)
-- streaming output to stdout, Parquet output, and a structured (json) error report
+- streaming output to stdout, Parquet output, and a structured (json) `--error-report`
