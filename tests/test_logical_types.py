@@ -136,6 +136,24 @@ def test_decimal_precision_scale_with_integer_decimal_parts(build_path):
     assert result.records[1]["measurement"] == decimal.Decimal("99.999")
 
 
+def test_decimal_split_parts_keep_leading_zeros(build_path):
+    result = run_fixture(build_path, "decimal_split_parts_leading_zeros")
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    assert [r["currency"] for r in result.records] == [12.05, 0.07, -3.01]
+
+
+def test_decimal_precision_scale_split_parts_keep_leading_zeros(build_path):
+    result = run_fixture(
+        build_path, "decimal_precision_scale_split_parts_leading_zeros"
+    )
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    assert [r["measurement"] for r in result.records] == [
+        decimal.Decimal("12.050"),
+        decimal.Decimal("0.005"),
+        decimal.Decimal("-3.007"),
+    ]
+
+
 def test_decimal_mixed_with_other_types(build_path):
     result = run_fixture(build_path, "decimal_mixed_types")
     assert result.returncode == 0, f"Command failed: {result.stderr}"

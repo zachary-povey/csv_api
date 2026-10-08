@@ -3,6 +3,7 @@ package parser
 import (
 	"fmt"
 	"math/big"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -88,54 +89,33 @@ func convert_decimal(args map[string]any, config config.DecimalTypeConfig) (any,
 			return 0, fmt.Errorf("missing 'decimal_part' argument when 'integer_part' is provided")
 		}
 
-		// Convert integer part
-		var intPart float64
-		switch int_val := integer_part.(type) {
-		case string:
-			parsed_int, err := strconv.ParseFloat(int_val, 64)
-			if err != nil {
-				return 0, fmt.Errorf("failed to convert integer_part to number: %w", err)
-			}
-			intPart = parsed_int
-		case int:
-			intPart = float64(int_val)
-		default:
-			return 0, fmt.Errorf("'integer_part' must be string or integer")
+		int_str, err := decimalPartToString(integer_part, "integer_part")
+		if err != nil {
+			return 0, err
+		}
+		dec_str, err := decimalPartToString(decimal_part, "decimal_part")
+		if err != nil {
+			return 0, err
+		}
+		if !integerPartPattern.MatchString(int_str) {
+			return 0, fmt.Errorf("integer_part '%s' is not an integer", int_str)
+		}
+		if !decimalPartPattern.MatchString(dec_str) {
+			return 0, fmt.Errorf("decimal_part '%s' must contain only digits", dec_str)
 		}
 
-		// Convert decimal part
-		var decPart float64
-		switch dec_val := decimal_part.(type) {
-		case string:
-			parsed_dec, err := strconv.ParseFloat(dec_val, 64)
-			if err != nil {
-				return 0, fmt.Errorf("failed to convert decimal_part to number: %w", err)
-			}
-			decPart = parsed_dec
-		case int:
-			decPart = float64(dec_val)
-		default:
-			return 0, fmt.Errorf("'decimal_part' must be string or integer")
-		}
-
-		// Combine parts: determine the scale of decimal part
-		scale := 1.0
-		if decPart > 0 {
-			// Count digits to determine appropriate scale
-			temp := decPart
-			for temp >= 1 {
-				scale *= 10
-				temp /= 10
-			}
-		}
-
-		result := intPart + (decPart / scale)
+		// Join the parts as text so leading zeros in decimal_part are kept
+		// (12 and 05 is 12.05, not 12.5) and precise decimals never go through float64
+		resultStr := int_str + "." + dec_str
 
 		if config.Args.AsFloat {
-			return result, nil
+			floatValue, err := strconv.ParseFloat(resultStr, 64)
+			if err != nil {
+				return 0, fmt.Errorf("failed to convert string to decimal: %w", err)
+			}
+			return floatValue, nil
 		} else {
 			// Convert to Avro decimal bytes representation
-			resultStr := fmt.Sprintf("%.10g", result)
 			return decimalToRat(resultStr)
 		}
 
@@ -377,6 +357,24 @@ func convert_timestamp(args map[string]any) (int64, error) {
 	epoch := time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
 	micros := utcTime.Sub(epoch).Microseconds() + int64(millisecond)*1000 + int64(microsecond)
 	return micros, nil
+}
+
+var (
+	integerPartPattern = regexp.MustCompile(`^[+-]?[0-9]+$`)
+	decimalPartPattern = regexp.MustCompile(`^[0-9]+$`)
+)
+
+// decimalPartToString returns an integer_part/decimal_part argument as text,
+// keeping any leading zeros a string value carries.
+func decimalPartToString(value any, key string) (string, error) {
+	switch v := value.(type) {
+	case string:
+		return v, nil
+	case int:
+		return strconv.Itoa(v), nil
+	default:
+		return "", fmt.Errorf("'%s' must be string or integer", key)
+	}
 }
 
 // decimalToRat converts a decimal string to a *big.Rat for goavro's decimal logical type.
