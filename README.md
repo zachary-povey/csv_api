@@ -414,6 +414,24 @@ Each entry under `fields` needs only a `name`, matched to a field of the base, p
 
 All the usual checks run on the merged config. For example, an `is_null` representation added to a field that the root doesn't make nullable fails the load, as does `required: false` on such a field. Use `validate_config --print-merged` to see the config a producer's file results in.
 
+## Performance
+
+`scripts/benchmark.py` generates a large csv (1,000,000 rows by default; integer, string, decimal, float decimal, enum, date, timestamp, boolean and a nullable string column) in a temporary directory, converts it with the built binary and reports wall time, rows/sec and peak memory:
+
+```sh
+./scripts/build.sh
+python3 scripts/benchmark.py            # options: --rows N --formats avro,parquet
+```
+
+Measured on 2026-11-01 on a 4-cpu x86_64 Linux VM with Go 1.24 (expect different numbers elsewhere):
+
+| Output  | Time (1M rows, 84 MB) | Throughput    | Peak RSS | Output size |
+| ------- | --------------------- | ------------- | -------- | ----------- |
+| Avro    | 18.6 s                | ~54k rows/s   | 20 MiB   | 65 MB       |
+| Parquet | 15.8 s                | ~63k rows/s   | 36 MiB   | 55 MB       |
+
+Memory stays flat as the file grows: rows are streamed through the pipeline (Parquet buffers up to one row group of 100,000 rows). Validation, not reading or writing, is the bottleneck. An invalid value early in a large file stops the run straight away (with the default fail-fast, or once `--max-errors` is reached).
+
 ## Roadmap
 
 Planned work is tracked as tasks with [Backlog.md](https://github.com/MrLesk/Backlog.md) in `backlog/` (run `backlog board` or `backlog task list`).
