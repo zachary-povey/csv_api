@@ -5,7 +5,7 @@ title: >-
   nullable field with no matching representation is a data failure like any
   other unmatched value (strict by default)
 date: '2026-11-01T10:56:00Z'
-status: accepted
+status: superseded by TASK-23
 ---
 ## Context
 
