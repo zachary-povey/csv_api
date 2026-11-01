@@ -198,6 +198,11 @@ func LoadConfig(filename string) (*Config, error) {
 		return nil, err
 	}
 
+	err = config.checkFieldNames()
+	if err != nil {
+		return nil, err
+	}
+
 	for i := range config.Fields {
 		err = config.Fields[i].UnmarshalTypeConfigs()
 		if err != nil {
@@ -244,6 +249,39 @@ func CheckAvroName(name string) error {
 				"each dot-separated part must start with a letter or underscore "+
 				"and contain only letters, digits and underscores", name)
 		}
+	}
+	return nil
+}
+
+// CheckFieldName checks a field's name, which becomes its Avro field name
+// (and, for an enum field, its Avro enum type name). It must be a valid Avro
+// name, [A-Za-z_][A-Za-z0-9_]*; unlike the config name it can't be dotted.
+func CheckFieldName(name string) error {
+	if name == "" {
+		return fmt.Errorf("a field is missing 'name': it is used as the Avro field name")
+	}
+	if !avroNameSegment.MatchString(name) {
+		return fmt.Errorf("field '%s': name is not a valid Avro name: it must start with a letter "+
+			"or underscore and contain only letters, digits and underscores "+
+			"(to match a csv header like '%s', give the field a valid name and use header_patterns)",
+			name, name)
+	}
+	return nil
+}
+
+// checkFieldNames rejects field names that are not valid Avro names, and
+// duplicate field names (an Avro record's field names must be unique).
+func (conf Config) checkFieldNames() error {
+	seen := map[string]bool{}
+	for _, field := range conf.Fields {
+		err := CheckFieldName(field.Name)
+		if err != nil {
+			return err
+		}
+		if seen[field.Name] {
+			return fmt.Errorf("field '%s': duplicate field name: field names must be unique", field.Name)
+		}
+		seen[field.Name] = true
 	}
 	return nil
 }

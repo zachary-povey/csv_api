@@ -17,3 +17,20 @@ func TestCheckAvroName(t *testing.T) {
 		}
 	}
 }
+
+// TASK-17 AC#1: a field name must be a valid Avro name (no dots: field names
+// are not fullnames).
+func TestCheckFieldName(t *testing.T) {
+	valid := []string{"id", "_id", "First_Name", "col2"}
+	for _, name := range valid {
+		if err := CheckFieldName(name); err != nil {
+			t.Errorf("%q: unexpected error: %v", name, err)
+		}
+	}
+	invalid := []string{"", "first name", "first-name", "2col", "a.b", "naïve"}
+	for _, name := range invalid {
+		if err := CheckFieldName(name); err == nil {
+			t.Errorf("%q: expected an error", name)
+		}
+	}
+}

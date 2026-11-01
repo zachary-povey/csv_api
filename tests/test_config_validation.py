@@ -175,6 +175,8 @@ INVALID_CONFIG_FIXTURES = {
     "config_is_null_named_group",
     "config_required_not_nullable",
     "config_header_pattern_invalid",
+    "config_field_name_invalid",
+    "config_field_name_duplicate",
 }
 
 
@@ -320,3 +322,51 @@ def test_validate_config_accepts_required_false_on_nullable_field(build_path):
     """TASK-8 AC#2: required: false is accepted on a nullable field."""
     result = run_validate_config(build_path, "optional_column_missing")
     assert result.returncode == 0, f"validate_config failed: {result.stderr}"
+
+
+# --- TASK-17: field names are valid, unique Avro names ---
+
+
+def test_invalid_field_name_fails_parse(build_path):
+    """TASK-17 AC#1: a field name that is not a valid Avro name fails config load,
+    naming the field and pointing at header_patterns."""
+    result = run_fixture(build_path, "config_field_name_invalid")
+    assert result.returncode != 0, "Command should have failed"
+    assert not result.output_exists
+    assert "field 'first name': name is not a valid Avro name" in result.stderr
+    assert "header_patterns" in result.stderr
+    assert "row " not in result.stderr
+
+
+def test_duplicate_field_name_fails_parse(build_path):
+    """TASK-17 AC#2: two fields with the same name fail config load, naming the
+    duplicate (even when header_patterns map them to different columns)."""
+    result = run_fixture(build_path, "config_field_name_duplicate")
+    assert result.returncode != 0, "Command should have failed"
+    assert not result.output_exists
+    assert "field 'id': duplicate field name" in result.stderr
+    assert "row " not in result.stderr
+
+
+@pytest.mark.parametrize(
+    "fixture_name, expected",
+    [
+        ("config_field_name_invalid", "field 'first name': name is not a valid Avro name"),
+        ("config_field_name_duplicate", "field 'id': duplicate field name"),
+    ],
+)
+def test_validate_config_reports_field_name_errors(build_path, fixture_name, expected):
+    """TASK-17 AC#3: validate_config reports invalid and duplicate field names."""
+    result = run_validate_config(build_path, fixture_name)
+    assert result.returncode != 0, "validate_config should have failed"
+    assert expected in result.stderr
+    assert "config file is not valid" in result.stderr
+
+
+def test_readme_states_field_name_rule():
+    """TASK-17 AC#4: the README Fields section states that field names must be
+    valid, unique Avro names."""
+    readme = (FIXTURES_DIR.parent.parent / "README.md").read_text()
+    fields_section = readme.split("### Fields", 1)[1].split("\n### ", 1)[0]
+    assert "valid Avro name" in fields_section
+    assert "unique" in fields_section

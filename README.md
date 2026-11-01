@@ -158,7 +158,7 @@ fields:
 
 ### Fields
 
-`fields` is a list, and its order sets the order of fields in the output schema. A field is matched to a csv column by an exact header match on `name`, unless it has `header_patterns`. Columns in the file that are not in the config are ignored, and the order of columns doesn't matter.
+`fields` is a list, and its order sets the order of fields in the output schema. Each field's `name` is its Avro field name (and, for an enum field, its Avro enum type name), so it must be a valid Avro name: it starts with a letter or underscore and contains only letters, digits and underscores (no dots). Field names must be unique. An invalid or duplicate name fails the config load, naming the field. If a csv header isn't a valid Avro name (say `first name`), give the field a valid name and match the header with `header_patterns` (below). A field is matched to a csv column by an exact header match on `name`, unless it has `header_patterns`. Columns in the file that are not in the config are ignored, and the order of columns doesn't matter.
 
 `header_patterns` is a list of Go regular expressions for a field's column header, for producers whose header text varies (case, spacing, suffixes). A column whose header matches any of them is mapped to the field. When a field has `header_patterns`, they replace the match on `name`: the name is then only the field's name in the output, so it can be a clean Avro name while the header is something like `First Name `. Add an exact-name pattern (`^first_name$`) if the name should match too. Like representation patterns, header patterns are not anchored, so use `^` and `$` to match the whole header. An invalid pattern fails the config load, naming the field and pattern.
 

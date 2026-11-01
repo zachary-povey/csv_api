@@ -1,0 +1,12 @@
+name: people
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  - name: first name
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.+)$"
