@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Build**: `./scripts/build.sh` (creates binary at `./build/csv-api`)
 - **Run**: `./build/csv-api parse --config-path <config> --input-path <csv> --output-path <output>` (short flags: `-c`, `-i`, `-o`)
-- **Validate config**: `./build/csv-api validate_config --config-path <config>`
+- **Validate config**: `./build/csv-api validate_config --config-path <config>` (`--print-merged` also prints the merged config as YAML to stdout)
 - **Test**: `python3 -m pytest tests` (builds the binary first; set `BUILD_PATH` to test an existing binary; needs `pip install -r tests/requirements.txt`)
 
 ## Architecture Overview
@@ -41,6 +41,8 @@ A config has a required top-level `name` (a valid Avro name, used as the output 
 - `header_patterns`: Optional array of (unanchored) regexes matched against csv headers to find the field's column; when set they replace the exact header match on `name`. A header matching more than one field, or a field matching more than one header, is a file-level error
 - `representations`: Array of regex patterns, tried in order (first match wins). Named capture groups and static `args` supply the type's value args; static args win on overlap. A representation with `is_null: true` resolves to null (nullable fields only). See README.md for the full reference.
 - `error_message`: optional plain-language message for the producer, appended as `(note: ...)` after the technical reason of the field's data failures (console report and `__csv_api_error__` column) and of its missing-column error. Cell errors are kept as `error_tracking.CellError` structs (row, column, field, value, reason, message).
+
+Layered configs (`internal/config/layered.go`): a config may start with `extends: <path>` (relative to that file; chains allowed, cycles and missing files fail naming the files). The root (no `extends`) defines the schema. Extending files are strictly decoded into `overrideConfig`, which only holds input-side settings (`allow_extra_fields`, and per field matched by `name`: `representations` / `prepend_representations` / `append_representations`, `header_patterns`, `error_message`, `required`); schema-side keys (`name`, `nullable`, `logical_type`) and unknown fields fail naming the file. Files merge root to leaf, then `Config.check()` runs every load-time check on the merged config. A new input-side field setting must be added to `fieldOverride` and `applyOverride` (and the README table) to be overridable. `validate_config --print-merged` prints the merged `Config` as YAML (keep `omitempty` tags so it stays a clean root config).
 
 The pipeline processes data concurrently using goroutines and channels. The reader checks the header synchronously before the goroutines start. Output (and the optional data failure report) is written to temporary files that are only renamed into place when the run succeeds.
 

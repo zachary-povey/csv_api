@@ -1,0 +1,4 @@
+extends: root.yaml
+fields:
+  - name: notes
+    required: false

@@ -1,0 +1,9 @@
+# a producer's config: only its differences from the shared base
+extends: base/base.yaml # relative to this file, not the working directory
+fields:
+  - name: id
+    header_patterns:
+      - "^Order ID$"
+  - name: order_date
+    prepend_representations:
+      - pattern: "^(?P<day>[0-9]{2})/(?P<month>[0-9]{2})/(?P<year>[0-9]{4})$"

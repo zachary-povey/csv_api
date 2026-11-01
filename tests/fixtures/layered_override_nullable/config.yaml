@@ -1,0 +1,4 @@
+extends: ../layered_basic/base/base.yaml
+fields:
+  - name: id
+    nullable: true

@@ -77,6 +77,12 @@ Check a config file on its own:
 ./build/csv-api validate_config -c config.yaml
 ```
 
+Add `--print-merged` to also print the config as YAML to stdout, merged with any configs it extends (see [Layered configs](#layered-configs)). The printed config is a complete root config, so it can be saved and used on its own. Nothing is printed if the config is not valid.
+
+```sh
+./build/csv-api validate_config -c partner.yaml --print-merged > merged.yaml
+```
+
 ### Error handling
 
 Errors fall into three groups:
@@ -273,9 +279,46 @@ A representation with `is_null: true` makes a matching value null instead of han
 
 At run time the converters check that the args make a valid value (e.g. a real calendar date, or a captured enum value in `permitted_values`), and report a cell error if not.
 
+### Layered configs
+
+One data contract is often received from several producers with small differences (a header name, an extra date format). Instead of copying the whole config per producer, a producer's config can extend a shared base and state only its differences:
+
+```yaml
+# partner.yaml
+extends: base.yaml # relative to this file
+allow_extra_fields: false
+fields:
+  - name: order_date # matched to the base field by name
+    header_patterns:
+      - "^Order Date$"
+    prepend_representations:
+      - pattern: "^(?P<day>[0-9]{2})/(?P<month>[0-9]{2})/(?P<year>[0-9]{4})$"
+```
+
+```sh
+./build/csv-api parse -c partner.yaml -i partner.csv -o partner.avro
+```
+
+`extends` names the base config, resolved relative to the file that contains it (an absolute path also works). Chains are allowed: `a.yaml` may extend `b.yaml` which extends `c.yaml`. The file at the end of the chain, with no `extends`, is the root. Settings are merged from the root to the file given with `-c`, later files winning. `parse` and `validate_config` take a single `-c`: the file at the start of the chain. A cycle, or an `extends` path that doesn't exist, fails the load, naming the files involved.
+
+The root defines the contract and the output schema. A file that extends another may only change input-side settings, so every producer's output has the same schema:
+
+| Setting | Where | Merge |
+| --- | --- | --- |
+| `allow_extra_fields` | top level | replaces the base value |
+| `representations` | field | replaces the base list |
+| `prepend_representations` | field | added before the base list (first match wins, so these take priority) |
+| `append_representations` | field | added after the base list |
+| `header_patterns` | field | replaces the base list (an empty list goes back to matching on the name) |
+| `error_message` | field | replaces the base value |
+| `required` | field | replaces the base value |
+
+Each entry under `fields` needs only a `name`, matched to a field of the base, plus the settings it changes. Fields it doesn't mention, and settings it doesn't set, are inherited unchanged; `fields` can be left out altogether. Removing single items from a list isn't supported: replace the list instead. Setting the schema `name`, a field's `logical_type` or `nullable`, or naming a field that isn't in the base, fails the load, naming the file and the setting or field (so fields can't be added, removed or reordered). Unknown keys fail as in any config.
+
+All the usual checks run on the merged config. For example, an `is_null` representation added to a field that the root doesn't make nullable fails the load, as does `required: false` on such a field. Use `validate_config --print-merged` to see the config a producer's file results in.
+
 ## Planned
 
 These are intended but not built yet. Work is tracked as tasks with [Backlog.md](https://github.com/MrLesk/Backlog.md) in `backlog/` (run `backlog board` or `backlog task list`).
 
-- layered config files: a shared base config with per-producer overrides merged on top (`-c base.yaml -c partner.yaml`)
 - streaming output to stdout, Parquet output, and a structured (json) `--error-report`

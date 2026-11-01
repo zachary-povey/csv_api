@@ -177,6 +177,16 @@ INVALID_CONFIG_FIXTURES = {
     "config_header_pattern_invalid",
     "config_field_name_invalid",
     "config_field_name_duplicate",
+    # TASK-10 layered configs that must fail (see test_layered_config.py)
+    "layered_override_logical_type",
+    "layered_override_name",
+    "layered_override_nullable",
+    "layered_unknown_field",
+    "layered_unknown_key",
+    "layered_is_null_not_nullable",
+    "layered_required_not_nullable",
+    "layered_cycle",
+    "layered_missing",
 }
 
 

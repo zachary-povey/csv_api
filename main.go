@@ -11,6 +11,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v2"
+	"gopkg.in/yaml.v2"
 
 	"github.com/zachary-povey/csv_api/internal/avro_writer"
 	"github.com/zachary-povey/csv_api/internal/config"
@@ -108,14 +109,28 @@ func main() {
 						Usage:    "config file path",
 						Required: true,
 					},
+					&cli.BoolFlag{
+						Name:  "print-merged",
+						Usage: "print the config, merged with any configs it extends, as YAML to stdout",
+					},
 				},
 				Action: func(cCtx *cli.Context) error {
-					_, err := config.LoadConfig(cCtx.Path("config-path"))
+					conf, err := config.LoadConfig(cCtx.Path("config-path"))
 					if err != nil {
 						return fmt.Errorf("%w\n%s", err, color.RedString("✗ config file is not valid"))
 					}
-					color.Cyan("✔ config file is valid")
-					return nil
+					if !cCtx.Bool("print-merged") {
+						color.Cyan("✔ config file is valid")
+						return nil
+					}
+					// stdout carries only the merged config
+					merged, err := yaml.Marshal(conf)
+					if err != nil {
+						return fmt.Errorf("failed to print merged config: %w", err)
+					}
+					fmt.Fprintln(os.Stderr, color.CyanString("✔ config file is valid"))
+					_, err = os.Stdout.Write(merged)
+					return err
 				},
 			},
 		},

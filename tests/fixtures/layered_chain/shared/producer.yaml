@@ -1,0 +1,10 @@
+# b: extends c, in the same directory as this file (not as the leaf)
+extends: root.yaml
+allow_extra_fields: false
+fields:
+  - name: day
+    error_message: from b
+    header_patterns:
+      - "^Day \\(b\\)$"
+    append_representations:
+      - pattern: "^(?P<day>[0-9]{2})/(?P<month>[0-9]{2})/(?P<year>[0-9]{4})$"

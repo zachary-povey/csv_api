@@ -1,0 +1,2 @@
+extends: ../layered_basic/base/base.yaml
+allow_extra_fields: false

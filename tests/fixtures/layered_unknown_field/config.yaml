@@ -1,0 +1,8 @@
+extends: ../layered_basic/base/base.yaml
+fields:
+  - name: id
+    header_patterns:
+      - "^ID$"
+  - name: discount
+    representations:
+      - pattern: "^[0-9]+$"

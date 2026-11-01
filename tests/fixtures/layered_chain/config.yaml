@@ -1,0 +1,13 @@
+# a: extends b
+extends: shared/producer.yaml
+allow_extra_fields: true
+fields:
+  - name: day
+    header_patterns:
+      - "^Day$"
+    prepend_representations:
+      - pattern: "^start$"
+        args:
+          year: 2020
+          month: 1
+          day: 1

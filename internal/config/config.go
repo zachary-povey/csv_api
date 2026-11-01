@@ -2,22 +2,20 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/go-viper/mapstructure/v2"
-	"gopkg.in/yaml.v2"
 )
 
 type Config struct {
-	Name   string        `yaml:"name"`
-	Fields []FieldConfig `yaml:"fields" validate:"required,dive"`
+	Name string `yaml:"name"`
 	// AllowExtraFields lets the file have columns that map to no field (they
 	// are ignored). Defaults to true; false makes each such column a
 	// file-level error. A pointer so an unset value can be told apart.
-	AllowExtraFields *bool `yaml:"allow_extra_fields"`
+	AllowExtraFields *bool         `yaml:"allow_extra_fields,omitempty"`
+	Fields           []FieldConfig `yaml:"fields" validate:"required,dive"`
 }
 
 // ExtraFieldsAllowed reports whether columns that map to no field are
@@ -29,32 +27,33 @@ func (conf Config) ExtraFieldsAllowed() bool {
 type FieldConfig struct {
 	Name              string            `yaml:"name"`
 	LogicalTypeConfig LogicalTypeConfig `yaml:"-"`
-	Representations   []Representation  `yaml:"representations"`
+	// RawLogicalTypeConfig is placed here so the YAML printed by
+	// validate_config --print-merged lists logical_type after name.
+	RawLogicalTypeConfig map[string]any   `yaml:"logical_type" validate:"required"`
+	Representations      []Representation `yaml:"representations"`
 	// Nullable fields may hold null (written to Avro as a union with null).
 	// Only nullable fields may have is_null representations.
-	Nullable bool `yaml:"nullable"`
+	Nullable bool `yaml:"nullable,omitempty"`
 	// Required fields must have a column in the file. Defaults to true; a
 	// missing optional (required: false) column is null for every row, so
 	// only nullable fields may be optional.
-	Required *bool `yaml:"required"`
+	Required *bool `yaml:"required,omitempty"`
 	// HeaderPatterns are regexes (not anchored) matched against the csv
 	// header to find the field's column. When set, they replace the exact
 	// match on Name.
-	HeaderPatterns []string `yaml:"header_patterns"`
+	HeaderPatterns []string `yaml:"header_patterns,omitempty"`
 	// ErrorMessage is an optional plain-language message for the producer,
 	// shown (after the technical reason) with every error about the field:
 	// its data failures and a missing required column.
-	ErrorMessage string `yaml:"error_message"`
+	ErrorMessage string `yaml:"error_message,omitempty"`
 
 	headerRegexes []*regexp.Regexp
-
-	RawLogicalTypeConfig map[string]any `yaml:"logical_type" validate:"required"`
 }
 
 type Representation struct {
 	Pattern string         `yaml:"pattern"`
-	IsNull  bool           `yaml:"is_null"`
-	Args    map[string]any `yaml:"args"`
+	IsNull  bool           `yaml:"is_null,omitempty"`
+	Args    map[string]any `yaml:"args,omitempty"`
 }
 
 type LogicalType string
@@ -191,60 +190,69 @@ func narrowType[T LogicalTypeConfig](fc FieldConfig) (T, error) {
 	return typedConfig, nil
 }
 
+// LoadConfig loads the config at filename, merged with any configs it extends
+// (see loadMerged), and checks the merged config.
 func LoadConfig(filename string) (*Config, error) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
-	}
-
-	var config Config
-	err = yaml.UnmarshalStrict(data, &config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal yaml: %w", err)
-	}
-	err = CheckAvroName(config.Name)
+	config, extended, err := loadMerged(filename)
 	if err != nil {
 		return nil, err
+	}
+	err = config.check()
+	if err != nil {
+		if extended {
+			return nil, fmt.Errorf("merged config for '%s': %w", filename, err)
+		}
+		return nil, err
+	}
+	return &config, nil
+}
+
+// check runs every load-time check on a (merged) config, and narrows the
+// fields' logical types and compiles their header patterns.
+func (conf *Config) check() error {
+	err := CheckAvroName(conf.Name)
+	if err != nil {
+		return err
 	}
 	validate := validator.New(validator.WithRequiredStructEnabled())
-	err = validate.Struct(config)
+	err = validate.Struct(*conf)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	err = config.checkFieldNames()
+	err = conf.checkFieldNames()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	for i := range config.Fields {
-		err = config.Fields[i].UnmarshalTypeConfigs()
+	for i := range conf.Fields {
+		err = conf.Fields[i].UnmarshalTypeConfigs()
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	err = config.compileHeaderPatterns()
+	err = conf.compileHeaderPatterns()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	err = config.checkRequired()
+	err = conf.checkRequired()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	err = config.checkEnumNames()
+	err = conf.checkEnumNames()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	err = config.checkRepresentations()
+	err = conf.checkRepresentations()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return &config, nil
+	return nil
 }
 
 var avroNameSegment = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)

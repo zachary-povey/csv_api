@@ -1,0 +1,5 @@
+# id is not nullable in the base, so it can't be optional
+extends: ../layered_basic/base/base.yaml
+fields:
+  - name: id
+    required: false

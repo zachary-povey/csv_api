@@ -1,0 +1,7 @@
+# id is not nullable in the base, so an is_null representation fails
+extends: ../layered_basic/base/base.yaml
+fields:
+  - name: id
+    prepend_representations:
+      - pattern: "^-$"
+        is_null: true

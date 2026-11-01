@@ -1,0 +1,5 @@
+extends: ../layered_basic/base/base.yaml
+fields:
+  - name: id
+    logical_type:
+      name: string
