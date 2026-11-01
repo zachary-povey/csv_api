@@ -30,6 +30,8 @@ func main() {
 
 	app := &cli.App{
 		Name: "csv-api",
+		// help and usage errors go to stderr: stdout carries only output data
+		Writer: os.Stderr,
 		Commands: []*cli.Command{
 			{
 				Name:        "parse",

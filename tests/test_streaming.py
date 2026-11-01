@@ -261,3 +261,24 @@ def test_readme_documents_stream():
     assert "exit code" in section
     planned = readme.split("## Planned", 1)[1]
     assert "stream" not in planned.lower()
+
+
+def test_usage_error_unknown_flag_writes_nothing_to_stdout(build_path):
+    """TASK-18 AC#1: an unknown flag fails without writing to stdout."""
+    result = subprocess.run(
+        [str(build_path), "parse", "--stream", "--bogus"], capture_output=True, timeout=60
+    )
+    assert result.returncode != 0
+    assert result.stdout == b""
+    assert b"bogus" in result.stderr
+
+
+def test_usage_error_missing_required_flag_writes_nothing_to_stdout(build_path):
+    """TASK-18 AC#2: a missing required flag fails without writing to stdout."""
+    config = FIXTURES_DIR / "simple_strings" / "config.yaml"
+    result = subprocess.run(
+        [str(build_path), "parse", "--stream", "-c", str(config)], capture_output=True, timeout=60
+    )
+    assert result.returncode != 0
+    assert result.stdout == b""
+    assert b"input-path" in result.stderr

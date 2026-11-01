@@ -82,7 +82,7 @@ By default the output is all or nothing: it is written to a temporary file and o
 The trade-off: rows are emitted before the rest of the file has been checked, so when a run fails the output written so far is incomplete (it may be empty, or stop part way through). The run still exits non-zero and stderr ends with a line saying the output is incomplete. **Consumers must check the exit code** and discard the output of a failed run. (In a shell pipeline, use `set -o pipefail` or check `PIPESTATUS`, since a pipeline's exit status is otherwise the last command's.)
 
 - The Avro header is always written first, so stdout is valid Avro even when no rows pass.
-- Stdout carries only the Avro output. Errors, warnings and the incomplete-output message go to stderr.
+- Stdout carries only the Avro output. Errors, warnings, the incomplete-output message, and help and usage errors from the command line go to stderr.
 - `--stream` with `--output-path` writes that file in place as rows are validated (no temporary file), so a failed run leaves the incomplete file behind. To stream to stdout, leave out `--output-path` (`-o -` is not treated as stdout).
 - Without `--stream`, `--output-path` is required.
 - The data failure report and the JSON error report are still written to a temporary file and moved into place, as without `--stream`.
