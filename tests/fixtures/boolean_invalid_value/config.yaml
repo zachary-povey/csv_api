@@ -1,0 +1,13 @@
+name: boolean_invalid_value
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^([0-9]+)$"
+  - name: active
+    logical_type:
+      name: boolean
+    representations:
+      # matches anything, but the converter only accepts true/false
+      - pattern: "^(?P<value>.*)$"

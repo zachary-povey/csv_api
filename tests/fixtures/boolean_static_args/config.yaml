@@ -1,0 +1,20 @@
+name: boolean_static_args
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^([0-9]+)$"
+  - name: active
+    logical_type:
+      name: boolean
+    representations:
+      # producer spellings mapped to the canonical values with static args;
+      # YAML bools and the strings "true"/"false" are both accepted
+      - pattern: "^(Y|yes|1)$"
+        args:
+          value: true
+      - pattern: "^(N|no|0)$"
+        args:
+          value: "false"
+      - pattern: "^(true|false)$"

@@ -1,0 +1,9 @@
+name: config_rep_static_boolean_bad
+fields:
+  - name: active
+    logical_type:
+      name: boolean
+    representations:
+      - pattern: "^Y$"
+        args:
+          value: "yes"

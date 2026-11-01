@@ -66,6 +66,7 @@ const (
 	Timestamp LogicalType = "timestamp"
 	Date      LogicalType = "date"
 	Time      LogicalType = "time"
+	Boolean   LogicalType = "boolean"
 )
 
 type LogicalTypeConfig interface {
@@ -127,6 +128,12 @@ type DateTypeConfig struct {
 
 func (DateTypeConfig) isLjc() {}
 
+type BooleanTypeConfig struct {
+	Name LogicalType `validate:"required"`
+}
+
+func (BooleanTypeConfig) isLjc() {}
+
 func (fc *FieldConfig) UnmarshalTypeConfigs() error {
 	logicalTypeName := fc.RawLogicalTypeConfig["name"]
 	logicalTypeNameStr, ok := logicalTypeName.(string)
@@ -151,6 +158,8 @@ func (fc *FieldConfig) UnmarshalTypeConfigs() error {
 		fc.LogicalTypeConfig, narrowingError = narrowType[TimeTypeConfig](*fc)
 	case Date:
 		fc.LogicalTypeConfig, narrowingError = narrowType[DateTypeConfig](*fc)
+	case Boolean:
+		fc.LogicalTypeConfig, narrowingError = narrowType[BooleanTypeConfig](*fc)
 	default:
 		return fmt.Errorf("field '%s': unknown logical type in config: '%s'", fc.Name, logicalTypeName)
 	}

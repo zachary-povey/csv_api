@@ -75,6 +75,8 @@ func map_type_json(field config.FieldConfig) string {
 		return `{"type":"long","logicalType":"time-micros"}`
 	case config.TimestampTypeConfig:
 		return `{"type":"long","logicalType":"timestamp-micros"}`
+	case config.BooleanTypeConfig:
+		return `"boolean"`
 	default:
 		panic(fmt.Sprintf("Unknown logical type config: %T", field.LogicalTypeConfig))
 	}
@@ -106,6 +108,8 @@ func unionBranch(field config.FieldConfig, namespace string) string {
 		return "long.time-micros"
 	case config.TimestampTypeConfig:
 		return "long.timestamp-micros"
+	case config.BooleanTypeConfig:
+		return "boolean"
 	default:
 		panic(fmt.Sprintf("Unknown logical type config: %T", field.LogicalTypeConfig))
 	}

@@ -187,6 +187,8 @@ INVALID_CONFIG_FIXTURES = {
     "layered_required_not_nullable",
     "layered_cycle",
     "layered_missing",
+    # TASK-15 bad static boolean arg (see test_logical_types.py)
+    "config_rep_static_boolean_bad",
 }
 
 

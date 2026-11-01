@@ -27,6 +27,8 @@ func Convert(args map[string]any, logical_type config.LogicalTypeConfig) (any, e
 		return convert_time(args)
 	case config.TimestampTypeConfig:
 		return convert_timestamp(args)
+	case config.BooleanTypeConfig:
+		return convert_boolean(args)
 	default:
 		return nil, fmt.Errorf("unsupported logical type: %s", logical_type)
 
@@ -56,6 +58,14 @@ func convert_string(args map[string]any) (string, error) {
 		return "", fmt.Errorf("'value' in args is not of type string")
 	}
 	return string_value, nil
+}
+
+func convert_boolean(args map[string]any) (bool, error) {
+	value, exists := args["value"]
+	if !exists {
+		return false, fmt.Errorf("missing 'value' argument")
+	}
+	return config.BoolArg(value, "value")
 }
 
 func convert_decimal(args map[string]any, config config.DecimalTypeConfig) (any, error) {

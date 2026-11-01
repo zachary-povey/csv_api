@@ -1,0 +1,12 @@
+name: boolean_canonical
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^([0-9]+)$"
+  - name: active
+    logical_type:
+      name: boolean
+    representations:
+      - pattern: "^(true|false)$"

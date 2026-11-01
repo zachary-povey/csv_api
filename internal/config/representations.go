@@ -81,6 +81,26 @@ func IntArg(val any, key string) (int, error) {
 	}
 }
 
+// BoolArg converts a boolean value arg. Only the canonical values are
+// accepted: the strings "true" and "false" (from capture groups or static
+// args) or a YAML bool static arg. Other producer spellings (Y/N, 1/0, ...)
+// are mapped to these by representations with static args.
+func BoolArg(val any, key string) (bool, error) {
+	switch v := val.(type) {
+	case bool:
+		return v, nil
+	case string:
+		switch v {
+		case "true":
+			return true, nil
+		case "false":
+			return false, nil
+		}
+	}
+	return false, fmt.Errorf("'%s' must be true or false, got '%v' "+
+		"(map other spellings to true/false with a representation's static args)", key, val)
+}
+
 // argSet is one combination of value args a logical type's converter accepts.
 type argSet struct {
 	required []string
@@ -96,6 +116,7 @@ var (
 		String:  {{required: []string{"value"}}},
 		Integer: {{required: []string{"value"}}},
 		Enum:    {{required: []string{"value"}}},
+		Boolean: {{required: []string{"value"}}},
 		Decimal: {
 			{required: []string{"value"}},
 			{required: []string{"integer_part", "decimal_part"}},
@@ -303,6 +324,10 @@ func checkStaticArg(typeConfig LogicalTypeConfig, name string, val any) error {
 			if _, err := strconv.ParseFloat(s, 64); err != nil {
 				return fmt.Errorf("'%s' is not a decimal", s)
 			}
+		}
+	case BooleanTypeConfig:
+		if _, err := BoolArg(val, name); err != nil {
+			return fmt.Errorf("must be true or false, got %v", val)
 		}
 	case IntegerTypeConfig, DateTypeConfig, TimeTypeConfig:
 		return mustBeInt()

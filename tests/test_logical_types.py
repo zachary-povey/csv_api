@@ -562,3 +562,59 @@ def test_missing_required_column_is_file_level_error_alongside_optional(build_pa
     assert not result.output_exists
     assert "file-level errors" in result.stderr
     assert "missing some required fields: [id]" in result.stderr
+
+
+# --- TASK-15: boolean logical type ---
+
+
+def test_boolean_canonical_values(build_path):
+    """TASK-15 AC#1: a boolean field converts the value arg "true"/"false" to
+    true/false and is written as Avro boolean."""
+    result = run_fixture(build_path, "boolean_canonical")
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    fields = {f["name"]: f for f in result.writer_schema["fields"]}
+    assert fields["active"]["type"] == "boolean"
+    assert result.records == [{"id": 1, "active": True}, {"id": 2, "active": False}]
+
+
+def test_boolean_static_args_map_producer_spellings(build_path):
+    """TASK-15 AC#2: representations with static args map producer spellings
+    (Y/N, yes/no, 1/0) to true/false; a static value may be a YAML bool or the
+    string "true"/"false"."""
+    result = run_fixture(build_path, "boolean_static_args")
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    assert [r["active"] for r in result.records] == [True, False, True, False, True, False, True, False]
+
+
+def test_boolean_nullable(build_path):
+    """TASK-15 AC#1: a nullable boolean is a ["null", "boolean"] union and
+    writes nulls and values through it."""
+    result = run_fixture(build_path, "boolean_nullable")
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    fields = {f["name"]: f for f in result.writer_schema["fields"]}
+    assert fields["active"]["type"] == ["null", "boolean"]
+    assert fields["active"]["default"] is None
+    assert [r["active"] for r in result.records] == [True, None, False]
+
+
+def test_boolean_invalid_value_is_data_failure(build_path):
+    """TASK-15 AC#1: the converter accepts only "true"/"false"; any other
+    value arg (here a captured "Y") is a cell-level data failure."""
+    result = run_fixture(build_path, "boolean_invalid_value", ["--fail-fast=false"])
+    assert result.returncode != 0, "Command should have failed"
+    assert not result.output_exists
+    assert "row 3, column 'active'" in result.stderr
+    assert "'value' must be true or false, got 'Y'" in result.stderr
+    assert "row 2," not in result.stderr
+    assert "row 4," not in result.stderr
+
+
+def test_boolean_bad_static_arg_fails_config_load(build_path):
+    """TASK-15 AC#2: a static boolean `value` that is not a bool or
+    "true"/"false" fails the config load, naming the field and pattern."""
+    result = run_fixture(build_path, "config_rep_static_boolean_bad")
+    assert result.returncode != 0, "Command should have failed"
+    assert not result.output_exists
+    assert "field 'active', pattern '^Y$'" in result.stderr
+    assert "static arg 'value': must be true or false, got yes" in result.stderr
+    assert "row " not in result.stderr

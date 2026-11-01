@@ -1,0 +1,20 @@
+name: com.example.boolean_nullable
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^([0-9]+)$"
+  - name: active
+    logical_type:
+      name: boolean
+    nullable: true
+    representations:
+      - pattern: "^$"
+        is_null: true
+      - pattern: "^Y$"
+        args:
+          value: true
+      - pattern: "^N$"
+        args:
+          value: false

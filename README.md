@@ -290,6 +290,7 @@ The config is checked strictly when it loads: an unknown key anywhere in it (inc
 | `date` | | `int` with `date` logical type |
 | `time` | | `long` with `time-micros` logical type |
 | `timestamp` | | `long` with `timestamp-micros` logical type (UTC) |
+| `boolean` | | `boolean` |
 
 A field with `nullable: true` is written as a union of `null` and the type above (e.g. `["null", "long"]`), with a default of `null`.
 
@@ -307,15 +308,30 @@ The value args each type accepts:
 
 | Type | Value args |
 | --- | --- |
-| `string`, `integer`, `enum` | `value` |
+| `string`, `integer`, `enum`, `boolean` | `value` (for `boolean`, exactly `true` or `false`) |
 | `decimal` | `value`, or `integer_part` and `decimal_part` |
 | `date` | `year`, `month`, `day` |
 | `time` | `hour`, `minute`, `second`, `millisecond`, `microsecond` (all optional, default 0) |
 | `timestamp` | `value` and `precision` (`seconds`, `milliseconds` or `microseconds`), with optional `offset`; or `year`, `month`, `day` with optional `hour`, `minute`, `second`, `millisecond`, `microsecond` and `timezone` (e.g. `+01:00`) |
 
-When the config loads, each representation is checked against this table: the args from its capture groups and static `args` must form one of the type's arg sets, with nothing missing and no unknown names (e.g. a `date` pattern with a `yr` group fails). Static arg values are checked too where they can be on their own: integer-valued args must be whole numbers, an `enum` `value` must be in `permitted_values`, and a timestamp `precision` or `timezone` must be valid. A failed check names the field and pattern, and `validate_config` reports it. Representations with `is_null: true` are checked separately (below), since they provide no value args.
+When the config loads, each representation is checked against this table: the args from its capture groups and static `args` must form one of the type's arg sets, with nothing missing and no unknown names (e.g. a `date` pattern with a `yr` group fails). Static arg values are checked too where they can be on their own: integer-valued args must be whole numbers, an `enum` `value` must be in `permitted_values`, a `boolean` `value` must be `true` or `false` (a YAML bool or the string), and a timestamp `precision` or `timezone` must be valid. A failed check names the field and pattern, and `validate_config` reports it. Representations with `is_null: true` are checked separately (below), since they provide no value args.
 
 A representation with `is_null: true` makes a matching value null instead of handing args to a converter. It is only allowed on a field with `nullable: true`, and since it provides no value args it can't have static `args` or named capture groups (unnamed groups such as `^(-|N/A)$` are fine). Breaking either rule fails the config load, naming the field. Like any representation it is tried in order, so put it before a broader pattern that would also match the placeholder.
+
+The `boolean` converter accepts only `true` and `false`. Map a producer's own spellings to these with static args, in line with the design principle that converters never see raw input:
+
+```yaml
+- name: active
+  logical_type:
+    name: boolean
+  representations:
+    - pattern: "^(Y|yes|1)$"
+      args:
+        value: true
+    - pattern: "^(N|no|0)$"
+      args:
+        value: false
+```
 
 At run time the converters check that the args make a valid value (e.g. a real calendar date, or a captured enum value in `permitted_values`), and report a cell error if not.
 
