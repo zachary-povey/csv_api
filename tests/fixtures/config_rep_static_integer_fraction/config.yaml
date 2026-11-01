@@ -1,0 +1,8 @@
+fields:
+  - name: n
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^half$"
+        args:
+          value: 1.5

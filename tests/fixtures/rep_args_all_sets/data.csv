@@ -1,0 +1,3 @@
+s,i,e,d,dec_v,dec_p,t,ts_epoch,ts_comp
+hello,42,green,2024-03-15,1.50,$2.05,12:30,1700000000,2024-03-15 10:00 +01:00
+hello,none,live,start,1.50,$2.05,midnight,epoch,2024-03-15 10:00 +01:00

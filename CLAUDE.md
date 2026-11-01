@@ -48,6 +48,7 @@ To add a new logical type to the system, you need to update several components:
 - Add new type constant to `LogicalType` enum
 - Create corresponding `*TypeConfig` struct implementing `LogicalTypeConfig` interface
 - Add a case to the switch in `FieldConfig.UnmarshalTypeConfigs()`
+- Add the type's value arg sets to `valueArgSets` in `internal/config/representations.go` (and any static arg value checks to `checkStaticArg`), so representations are checked at config load
 
 ### 2. Parser (`internal/parser/converters.go`)
 - Add new case in `Convert()` function switch statement

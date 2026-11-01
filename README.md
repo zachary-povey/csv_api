@@ -159,7 +159,7 @@ fields:
 
 `logical_type.name` is one of the types below. Some types take `args` under `logical_type`. These are settings that must be the same for every value in the column (such as decimal precision or the permitted values of an enum), so they live on the type rather than on a representation.
 
-The config is checked strictly when it loads: an unknown key anywhere in it (including under `logical_type` or its `args`, e.g. a typo like `permited_values`) or a missing or conflicting type arg fails the run, and `validate_config` reports it with the field name. The exception is a representation's `args`, which are value args handed to the converter.
+The config is checked strictly when it loads: an unknown key anywhere in it (including under `logical_type` or its `args`, e.g. a typo like `permited_values`) or a missing or conflicting type arg fails the run, and `validate_config` reports it with the field name. A representation's `args` are value args handed to the converter, and are checked against the logical type's value args (see [Representations](#representations)).
 
 | Type | Type args | Avro output |
 | --- | --- | --- |
@@ -178,7 +178,7 @@ Each value is tested against the field's representations in order, and the first
 A representation produces a set of value args, which are handed to the type's converter:
 
 - **Named capture groups** become args with the group's name, e.g. `(?P<year>[0-9]{4})` gives `year`.
-- **A single unnamed capture group** is treated as `value`. A pattern with no capture groups at all makes the whole match `value`.
+- **A single unnamed capture group** is treated as `value`. A pattern with no capture groups at all makes the whole match `value`; types with no `value` arg (`date`, `time`) ignore it, so a fixed pattern like `^start$` can supply all its args statically.
 - **Static `args`** on the representation add fixed values. If a static arg and a capture group share a name, the static arg wins. Integer-valued args (`integer`'s `value`, and the numeric date/time/timestamp parts) may be given as YAML numbers or strings, e.g. `args: {value: 0}`; a number with a fractional part is rejected.
 
 The value args each type accepts:
@@ -191,7 +191,9 @@ The value args each type accepts:
 | `time` | `hour`, `minute`, `second`, `millisecond`, `microsecond` (all optional, default 0) |
 | `timestamp` | `value` and `precision` (`seconds`, `milliseconds` or `microseconds`), with optional `offset`; or `year`, `month`, `day` with optional `hour`, `minute`, `second`, `millisecond`, `microsecond` and `timezone` (e.g. `+01:00`) |
 
-The converters check that the args make a valid value (e.g. a real calendar date, an enum value in `permitted_values`), and report a cell error if not.
+When the config loads, each representation is checked against this table: the args from its capture groups and static `args` must form one of the type's arg sets, with nothing missing and no unknown names (e.g. a `date` pattern with a `yr` group fails). Static arg values are checked too where they can be on their own: integer-valued args must be whole numbers, an `enum` `value` must be in `permitted_values`, and a timestamp `precision` or `timezone` must be valid. A failed check names the field and pattern, and `validate_config` reports it. Representations with `is_null: true` are not checked, since they provide no value args.
+
+At run time the converters check that the args make a valid value (e.g. a real calendar date, or a captured enum value in `permitted_values`), and report a cell error if not.
 
 ## Planned
 
@@ -204,5 +206,4 @@ These are intended but not built yet. Work is tracked as tasks with [Backlog.md]
 - `nullable` and `is_null`: allow null values, with representations that resolve to null (`is_null` is accepted in config but has no effect yet)
 - layered config files: a shared base config with per-producer overrides merged on top (`-c base.yaml -c partner.yaml`)
 - per-field error messages: an optional message in the config, shown when a field's values fail
-- checking at config load that every representation provides the args its type needs (currently this is only caught per cell at runtime)
 - streaming output to stdout, Parquet output, and a structured (json) `--error-report`

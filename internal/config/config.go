@@ -185,6 +185,11 @@ func LoadConfig(filename string) (*Config, error) {
 		}
 	}
 
+	err = config.checkRepresentations()
+	if err != nil {
+		return nil, err
+	}
+
 	return &config, nil
 }
 

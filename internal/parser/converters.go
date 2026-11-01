@@ -2,7 +2,6 @@ package parser
 
 import (
 	"fmt"
-	"math"
 	"math/big"
 	"regexp"
 	"strconv"
@@ -145,36 +144,7 @@ func argToInt(args map[string]any, key string) (int, error) {
 	if !exists {
 		return 0, fmt.Errorf("missing '%s' argument", key)
 	}
-	switch v := val.(type) {
-	case string:
-		return strconv.Atoi(v)
-	default:
-		return numberToInt(v, key)
-	}
-}
-
-// numberToInt converts a numeric static arg decoded from YAML to an int.
-// yaml.v2 decodes whole numbers as int (int64/uint64 when large) and others
-// as float64; a float is only accepted when it has no fractional part.
-func numberToInt(val any, key string) (int, error) {
-	switch v := val.(type) {
-	case int:
-		return v, nil
-	case int64:
-		return int(v), nil
-	case uint64:
-		if v > math.MaxInt64 {
-			return 0, fmt.Errorf("'%s' value %d is out of range", key, v)
-		}
-		return int(v), nil
-	case float64:
-		if v != math.Trunc(v) || v < math.MinInt64 || v >= math.MaxInt64 {
-			return 0, fmt.Errorf("'%s' value %v is not a whole number", key, v)
-		}
-		return int(v), nil
-	default:
-		return 0, fmt.Errorf("'%s' must be string or integer", key)
-	}
+	return config.IntArg(val, key)
 }
 
 func convert_date(args map[string]any) (int32, error) {
@@ -206,15 +176,10 @@ func argToIntDefault(args map[string]any, key string, defaultVal int) (int, erro
 	if !exists {
 		return defaultVal, nil
 	}
-	switch v := val.(type) {
-	case string:
-		if v == "" {
-			return defaultVal, nil
-		}
-		return strconv.Atoi(v)
-	default:
-		return numberToInt(v, key)
+	if val == "" {
+		return defaultVal, nil
 	}
+	return config.IntArg(val, key)
 }
 
 func convert_time(args map[string]any) (int64, error) {
@@ -262,18 +227,9 @@ func convert_time(args map[string]any) (int64, error) {
 func convert_timestamp(args map[string]any) (int64, error) {
 	// Parameter set 1: epoch-based (value + precision + optional offset)
 	if value, exists := args["value"]; exists {
-		var epochVal int64
-		switch v := value.(type) {
-		case string:
-			parsed, err := strconv.ParseInt(v, 10, 64)
-			if err != nil {
-				return 0, fmt.Errorf("failed to convert timestamp value to int: %w", err)
-			}
-			epochVal = parsed
-		case int:
-			epochVal = int64(v)
-		default:
-			return 0, fmt.Errorf("'value' must be string or integer")
+		epochVal, err := config.IntArg(value, "value")
+		if err != nil {
+			return 0, fmt.Errorf("failed to convert timestamp value to int: %w", err)
 		}
 
 		precision, exists := args["precision"]
@@ -293,11 +249,11 @@ func convert_timestamp(args map[string]any) (int64, error) {
 		var micros int64
 		switch precisionStr {
 		case "seconds":
-			micros = (epochVal + int64(offset)) * 1000000
+			micros = (int64(epochVal) + int64(offset)) * 1000000
 		case "milliseconds":
-			micros = (epochVal + int64(offset)*1000) * 1000
+			micros = (int64(epochVal) + int64(offset)*1000) * 1000
 		case "microseconds":
-			micros = epochVal + int64(offset)*1000000
+			micros = int64(epochVal) + int64(offset)*1000000
 		default:
 			return 0, fmt.Errorf("unsupported precision '%s', must be 'seconds', 'milliseconds', or 'microseconds'", precisionStr)
 		}
