@@ -1,0 +1,13 @@
+name: strict
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  - name: count
+    required: false
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"

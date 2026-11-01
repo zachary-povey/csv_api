@@ -173,6 +173,18 @@ Fields are not nullable by default: every value must resolve to a value of the f
       - pattern: "^[0-9]+$"
 ```
 
+Fields are required by default: the file must have a column for every field, and a missing one is a file-level error. Set `required: false` on a field whose column may be left out of the file. When the column is missing, the field is null in every row; when it is present, its values are parsed as usual. Since a missing column means null, `required: false` is only allowed on a field with `nullable: true`; on any other field it fails the config load, naming the field.
+
+```yaml
+  - name: notes
+    required: false # the column may be missing from the file
+    nullable: true
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.*)$"
+```
+
 ### Logical types and type args
 
 `logical_type.name` is one of the types below. Some types take `args` under `logical_type`. These are settings that must be the same for every value in the column (such as decimal precision or the permitted values of an enum), so they live on the type rather than on a representation.
@@ -223,7 +235,6 @@ These are intended but not built yet. Work is tracked as tasks with [Backlog.md]
 
 - `header_patterns`: regex matching of csv headers to fields, instead of an exact match on `name`
 - `allow_extra_fields`: option to reject columns not in the config (currently they are always ignored)
-- `required`: per-field option to allow a column to be missing (currently every field is required)
 - layered config files: a shared base config with per-producer overrides merged on top (`-c base.yaml -c partner.yaml`)
 - per-field error messages: an optional message in the config, shown when a field's values fail
 - streaming output to stdout, Parquet output, and a structured (json) `--error-report`

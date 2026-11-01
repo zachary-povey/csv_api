@@ -128,3 +128,23 @@ def test_dropped_rows_and_report_with_nullable_fields(build_path):
     assert [row[:2] for row in rows] == [["x", "N/A"], ["4", "bad"]]
     assert "column 'id'" in rows[0][2]
     assert "column 'amount': value 'bad'" in rows[1][2]
+
+
+def test_data_failure_report_with_missing_optional_column(build_path):
+    """TASK-8 AC#1: with a required: false column missing, valid rows are
+    written with null for it, and the data failure report keeps the file's
+    own header and raw values (extra column and column order included)."""
+    result = run_fixture(
+        build_path, "optional_column_missing_dropped_rows", DROP_DATA_FAILURES, data_failure_report=True
+    )
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    assert result.records == [
+        {"id": 1, "note": None, "amount": decimal.Decimal("1.50")},
+        {"id": 4, "note": None, "amount": decimal.Decimal("4.00")},
+    ]
+    assert "dropped 2 row(s)" in result.stderr
+    header, *rows = result.data_failure_rows
+    assert header == ["extra", "amount", "id", "__csv_api_error__"]
+    assert [row[:3] for row in rows] == [["y", "bad", "2"], ["z", "-", "nope"]]
+    assert rows[0][3] == "column 'amount': value 'bad' did not match any pattern"
+    assert rows[1][3] == "column 'id': value 'nope' did not match any pattern"

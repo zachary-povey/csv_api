@@ -173,6 +173,7 @@ INVALID_CONFIG_FIXTURES = {
     "config_is_null_not_nullable",
     "config_is_null_with_args",
     "config_is_null_named_group",
+    "config_required_not_nullable",
 }
 
 
@@ -288,3 +289,33 @@ def test_validate_config_rejects_bad_is_null_representations(build_path, fixture
     assert result.returncode != 0, "validate_config should have failed"
     assert "field 'count'" in result.stderr
     assert expected in result.stderr
+
+
+# --- TASK-8: required option ---
+
+
+def test_required_false_on_non_nullable_field_fails_parse(build_path):
+    """TASK-8 AC#2: required: false is only allowed on nullable fields; on a
+    field without nullable: true it is rejected at config load, naming the
+    field, even though the column is present in the file."""
+    result = run_fixture(build_path, "config_required_not_nullable")
+    assert result.returncode != 0, "Command should have failed"
+    assert not result.output_exists
+    assert "field 'count'" in result.stderr
+    assert "required: false is only allowed on a nullable field" in result.stderr
+    assert "row " not in result.stderr
+
+
+def test_validate_config_rejects_required_false_on_non_nullable_field(build_path):
+    """TASK-8 AC#2: validate_config reports required: false on a non-nullable
+    field, naming the field."""
+    result = run_validate_config(build_path, "config_required_not_nullable")
+    assert result.returncode != 0, "validate_config should have failed"
+    assert "field 'count'" in result.stderr
+    assert "required: false is only allowed on a nullable field" in result.stderr
+
+
+def test_validate_config_accepts_required_false_on_nullable_field(build_path):
+    """TASK-8 AC#2: required: false is accepted on a nullable field."""
+    result = run_validate_config(build_path, "optional_column_missing")
+    assert result.returncode == 0, f"validate_config failed: {result.stderr}"

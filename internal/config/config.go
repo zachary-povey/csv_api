@@ -23,6 +23,10 @@ type FieldConfig struct {
 	// Nullable fields may hold null (written to Avro as a union with null).
 	// Only nullable fields may have is_null representations.
 	Nullable bool `yaml:"nullable"`
+	// Required fields must have a column in the file. Defaults to true; a
+	// missing optional (required: false) column is null for every row, so
+	// only nullable fields may be optional.
+	Required *bool `yaml:"required"`
 
 	RawLogicalTypeConfig map[string]any `yaml:"logical_type" validate:"required"`
 }
@@ -195,6 +199,11 @@ func LoadConfig(filename string) (*Config, error) {
 		}
 	}
 
+	err = config.checkRequired()
+	if err != nil {
+		return nil, err
+	}
+
 	err = config.checkEnumNames()
 	if err != nil {
 		return nil, err
@@ -252,10 +261,30 @@ func (conf Config) AllFieldNames() []string {
 	return fieldNames
 }
 
+// IsRequired reports whether the field's column must be in the file
+// (the default, unless the config sets required: false).
+func (fc FieldConfig) IsRequired() bool {
+	return fc.Required == nil || *fc.Required
+}
+
+// checkRequired rejects required: false on a field that is not nullable: a
+// missing column is null for every row, so the field must allow nulls.
+func (conf Config) checkRequired() error {
+	for _, field := range conf.Fields {
+		if !field.IsRequired() && !field.Nullable {
+			return fmt.Errorf("field '%s': required: false is only allowed on a nullable field "+
+				"(a missing column is null; add 'nullable: true' to the field)", field.Name)
+		}
+	}
+	return nil
+}
+
 func (conf Config) RequiredFieldNames() []string {
 	fieldNames := []string{}
 	for _, field := range conf.Fields {
-		fieldNames = append(fieldNames, field.Name)
+		if field.IsRequired() {
+			fieldNames = append(fieldNames, field.Name)
+		}
 	}
 
 	return fieldNames

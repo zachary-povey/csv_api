@@ -88,6 +88,8 @@ def test_regex_pattern_mismatch(build_path):
 
 
 def test_missing_required_field(build_path):
+    """TASK-8 AC#3: fields are required by default; a missing one is a
+    file-level error."""
     result = run_fixture(build_path, "missing_required_field")
     assert result.returncode != 0, "Command should have failed"
     assert (
@@ -96,6 +98,9 @@ def test_missing_required_field(build_path):
         or "missing" in result.stderr.lower()
         or "required" in result.stderr.lower()
     ), f"Error should mention missing required field 'age': {result.stderr} {result.stdout}"
+    assert "missing some required fields: [age]" in result.stderr
+    assert "file-level errors" in result.stderr
+    assert not result.output_exists
 
 
 def test_integer_overflow_or_invalid_format(build_path):
@@ -516,3 +521,44 @@ def test_empty_cell_on_nullable_field_without_null_representation_fails(build_pa
     assert not result.output_exists
     assert "row 3, column 'count': value '' did not match any pattern" in result.stderr
     assert "row 4" not in result.stderr
+
+
+# --- TASK-8: optional columns (required: false) ---
+
+
+def test_missing_optional_column_is_written_as_null(build_path):
+    """TASK-8 AC#1: a field with required: false may be missing from the file;
+    its values are written as null. The file's columns are in a different
+    order from the config and include an extra column, so present columns
+    must still be mapped by header name."""
+    result = run_fixture(build_path, "optional_column_missing")
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    assert result.records == [
+        {"id": 1, "note": None, "amount": decimal.Decimal("1.50")},
+        {"id": 2, "note": None, "amount": None},
+        {"id": 3, "note": None, "amount": decimal.Decimal("3.00")},
+    ]
+    fields = {f["name"]: f for f in result.writer_schema["fields"]}
+    assert fields["note"]["type"] == ["null", "string"]
+    assert fields["note"]["default"] is None
+
+
+def test_optional_column_present_is_parsed_normally(build_path):
+    """TASK-8 AC#1: when a required: false column is present, its values are
+    parsed like any other column (including is_null representations)."""
+    result = run_fixture(build_path, "optional_column_present")
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    assert result.records == [
+        {"id": 1, "note": "hello", "amount": decimal.Decimal("1.50")},
+        {"id": 2, "note": None, "amount": None},
+    ]
+
+
+def test_missing_required_column_is_file_level_error_alongside_optional(build_path):
+    """TASK-8 AC#3: a missing required field is still a file-level error when
+    the config also has optional fields; only the required field is named."""
+    result = run_fixture(build_path, "missing_required_with_optional")
+    assert result.returncode != 0, "Command should have failed"
+    assert not result.output_exists
+    assert "file-level errors" in result.stderr
+    assert "missing some required fields: [id]" in result.stderr
