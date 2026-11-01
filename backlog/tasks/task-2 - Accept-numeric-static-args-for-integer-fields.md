@@ -3,7 +3,8 @@ id: TASK-2
 title: Accept numeric static args for integer fields
 status: To Do
 assignee: []
-created_date: '2026-10-08 18:05'
+created_date: 2026-10-08 18:05
+updated_date: '2026-11-01T10:41:00Z'
 labels:
   - parser
 dependencies: []
@@ -26,3 +27,11 @@ Static `args` in YAML can be numbers, but `convert_int` only accepts strings, so
 - [ ] #2 String values from capture groups still convert as before
 - [ ] #3 A fixture test covers a numeric static arg on an integer field
 <!-- AC:END -->
+
+## Definition of Done
+<!-- DOD:BEGIN -->
+- [ ] #1 Full test suite passes (python3 -m pytest tests)
+- [ ] #2 go vet ./... is clean
+- [ ] #3 Every acceptance criterion has a test that names it (e.g. TASK-12 AC#2)
+- [ ] #4 README updated for any user-facing change
+<!-- DOD:END -->

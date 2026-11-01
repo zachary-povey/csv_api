@@ -41,6 +41,18 @@ The solution to this problem, as I see it is:
 
 At some point, the data will have to be converted, do this first formally. If the expectations are not met, errors would have occurred anyway
 
+### Design principles
+
+1. The config is the contract agreed with the data producer. Command-line flags are the consumer's run-time choices. Keep contract in config and run-time behaviour in flags.
+2. The output schema is defined by the root config only. Producer-specific overrides (layered configs) may change input-side settings only, so every producer's output has the same schema.
+3. Strict by default; anything more lenient is an explicit opt-in.
+4. A failed run leaves no output behind. The only exception is the explicit `--stream` opt-in, where the non-zero exit code signals incomplete output.
+5. Never lose data silently: dropped rows always produce a warning and can be written to a report.
+6. Catch config mistakes when the config loads, not per cell at run time.
+7. Converters never see raw input. Input flexibility belongs in representations (regexes and static args); converters only check that their args form a valid value.
+8. Errors are specific: row, column, value and reason. Stdout carries only output data; errors and warnings go to stderr.
+9. Out of scope: validating logical values, cross-field rules, capturing contextual information (see [Out of scope](#out-of-scope)).
+
 ## Usage
 
 Build the binary (written to `build/csv-api`):

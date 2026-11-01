@@ -3,7 +3,8 @@ id: TASK-9
 title: Check representation args against the logical type at config load
 status: To Do
 assignee: []
-created_date: '2026-10-08 18:05'
+created_date: 2026-10-08 18:05
+updated_date: '2026-11-01T10:41:00Z'
 labels:
   - config
 dependencies: []
@@ -25,3 +26,11 @@ If a representation cannot supply the args its logical type needs (e.g. a date p
 - [ ] #3 `validate_config` reports these errors
 - [ ] #4 Existing test fixtures still load
 <!-- AC:END -->
+
+## Definition of Done
+<!-- DOD:BEGIN -->
+- [ ] #1 Full test suite passes (python3 -m pytest tests)
+- [ ] #2 go vet ./... is clean
+- [ ] #3 Every acceptance criterion has a test that names it (e.g. TASK-12 AC#2)
+- [ ] #4 README updated for any user-facing change
+<!-- DOD:END -->

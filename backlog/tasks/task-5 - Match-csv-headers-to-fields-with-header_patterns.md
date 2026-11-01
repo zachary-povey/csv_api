@@ -3,7 +3,8 @@ id: TASK-5
 title: Match csv headers to fields with header_patterns
 status: To Do
 assignee: []
-created_date: '2026-10-08 18:05'
+created_date: 2026-10-08 18:05
+updated_date: '2026-11-01T10:41:00Z'
 labels:
   - config
   - reader
@@ -26,3 +27,11 @@ Fields are matched to columns by an exact header match on `name`. Producers ofte
 - [ ] #3 A header matching more than one field, or a field matching more than one header, is a file-level error
 - [ ] #4 README and tests updated
 <!-- AC:END -->
+
+## Definition of Done
+<!-- DOD:BEGIN -->
+- [ ] #1 Full test suite passes (python3 -m pytest tests)
+- [ ] #2 go vet ./... is clean
+- [ ] #3 Every acceptance criterion has a test that names it (e.g. TASK-12 AC#2)
+- [ ] #4 README updated for any user-facing change
+<!-- DOD:END -->

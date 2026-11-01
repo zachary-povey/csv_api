@@ -3,8 +3,8 @@ id: TASK-14
 title: Support streaming output to stdout
 status: To Do
 assignee: []
-created_date: '2026-10-08 18:05'
-updated_date: '2026-11-01 10:16'
+created_date: 2026-10-08 18:05
+updated_date: '2026-11-01T10:41:00Z'
 labels:
   - output
   - cli
@@ -30,3 +30,11 @@ Decision: support both behaviours, chosen with a `--stream` flag. Without it, be
 - [ ] #4 Given --stream, when parse runs, then errors and warnings go to stderr only, so stdout carries only output data
 - [ ] #5 README documents --stream and the incomplete-output trade-off
 <!-- AC:END -->
+
+## Definition of Done
+<!-- DOD:BEGIN -->
+- [ ] #1 Full test suite passes (python3 -m pytest tests)
+- [ ] #2 go vet ./... is clean
+- [ ] #3 Every acceptance criterion has a test that names it (e.g. TASK-12 AC#2)
+- [ ] #4 README updated for any user-facing change
+<!-- DOD:END -->

@@ -3,7 +3,8 @@ id: TASK-8
 title: Allow optional columns with a required field option
 status: To Do
 assignee: []
-created_date: '2026-10-08 18:05'
+created_date: 2026-10-08 18:05
+updated_date: '2026-11-01T10:41:00Z'
 labels:
   - config
   - reader
@@ -29,3 +30,11 @@ Every configured field must be present in the file (`RequiredFieldNames` returns
 - [ ] #3 Missing required fields are still a file-level error
 - [ ] #4 README and tests updated
 <!-- AC:END -->
+
+## Definition of Done
+<!-- DOD:BEGIN -->
+- [ ] #1 Full test suite passes (python3 -m pytest tests)
+- [ ] #2 go vet ./... is clean
+- [ ] #3 Every acceptance criterion has a test that names it (e.g. TASK-12 AC#2)
+- [ ] #4 README updated for any user-facing change
+<!-- DOD:END -->
