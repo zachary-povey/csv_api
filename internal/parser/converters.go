@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"regexp"
 	"strconv"
@@ -38,13 +39,10 @@ func convert_int(args map[string]any) (int, error) {
 	if !exists {
 		return 0, fmt.Errorf("missing 'value' argument")
 	}
-	string_value, ok := value.(string)
-	if !ok {
-		return 0, fmt.Errorf("'value' in args is not of type string")
-	}
-	intValue, err := strconv.Atoi(string_value)
+	// Capture groups give strings; static args from YAML may be numbers
+	intValue, err := argToInt(args, "value")
 	if err != nil {
-		return 0, fmt.Errorf("failed to convert string to int: %w", err)
+		return 0, fmt.Errorf("failed to convert %v to int: %w", value, err)
 	}
 	return intValue, nil
 }
@@ -150,8 +148,30 @@ func argToInt(args map[string]any, key string) (int, error) {
 	switch v := val.(type) {
 	case string:
 		return strconv.Atoi(v)
+	default:
+		return numberToInt(v, key)
+	}
+}
+
+// numberToInt converts a numeric static arg decoded from YAML to an int.
+// yaml.v2 decodes whole numbers as int (int64/uint64 when large) and others
+// as float64; a float is only accepted when it has no fractional part.
+func numberToInt(val any, key string) (int, error) {
+	switch v := val.(type) {
 	case int:
 		return v, nil
+	case int64:
+		return int(v), nil
+	case uint64:
+		if v > math.MaxInt64 {
+			return 0, fmt.Errorf("'%s' value %d is out of range", key, v)
+		}
+		return int(v), nil
+	case float64:
+		if v != math.Trunc(v) || v < math.MinInt64 || v >= math.MaxInt64 {
+			return 0, fmt.Errorf("'%s' value %v is not a whole number", key, v)
+		}
+		return int(v), nil
 	default:
 		return 0, fmt.Errorf("'%s' must be string or integer", key)
 	}
@@ -192,10 +212,8 @@ func argToIntDefault(args map[string]any, key string, defaultVal int) (int, erro
 			return defaultVal, nil
 		}
 		return strconv.Atoi(v)
-	case int:
-		return v, nil
 	default:
-		return 0, fmt.Errorf("'%s' must be string or integer", key)
+		return numberToInt(v, key)
 	}
 }
 

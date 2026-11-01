@@ -45,6 +45,21 @@ def test_complex_integer_patterns(build_path):
     assert result.records[1]["price"] == 25
 
 
+def test_integer_static_numeric_arg(build_path):
+    """TASK-2 AC#1, AC#2, AC#3: numeric static `value` args (YAML int and
+    whole-number float) convert on an integer field, alongside string values
+    from capture groups."""
+    result = run_fixture(build_path, "integer_static_numeric_arg")
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    assert [r["id"] for r in result.records] == [1, 2, 3, 4]
+    # AC#1: numeric static args
+    assert result.records[0]["quantity"] == 0
+    assert result.records[1]["quantity"] == 12
+    # AC#2: capture group strings still convert
+    assert result.records[2]["quantity"] == 42
+    assert result.records[3]["quantity"] == -7
+
+
 def test_string_with_special_characters(build_path):
     result = run_fixture(build_path, "string_special_chars")
     assert result.returncode == 0, f"Command failed: {result.stderr}"

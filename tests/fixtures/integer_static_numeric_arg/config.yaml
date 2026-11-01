@@ -1,0 +1,17 @@
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "(?P<value>[0-9]+)"
+  - name: quantity
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^none$"
+        args:
+          value: 0
+      - pattern: "^dozen$"
+        args:
+          value: 12.0
+      - pattern: "^(?P<value>-?[0-9]+)$"

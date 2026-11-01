@@ -177,7 +177,7 @@ A representation produces a set of value args, which are handed to the type's co
 
 - **Named capture groups** become args with the group's name, e.g. `(?P<year>[0-9]{4})` gives `year`.
 - **A single unnamed capture group** is treated as `value`. A pattern with no capture groups at all makes the whole match `value`.
-- **Static `args`** on the representation add fixed values. If a static arg and a capture group share a name, the static arg wins.
+- **Static `args`** on the representation add fixed values. If a static arg and a capture group share a name, the static arg wins. Integer-valued args (`integer`'s `value`, and the numeric date/time/timestamp parts) may be given as YAML numbers or strings, e.g. `args: {value: 0}`; a number with a fractional part is rejected.
 
 The value args each type accepts:
 
