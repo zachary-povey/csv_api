@@ -1,0 +1,14 @@
+name: empty_is_not_null_fails
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  - name: count
+    nullable: true
+    empty_is_null: false
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"

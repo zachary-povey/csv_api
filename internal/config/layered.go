@@ -14,10 +14,12 @@ import (
 // logical_type) which are decoded only so they can be rejected with a clear
 // error. It is decoded strictly, so any other key fails the load.
 type overrideConfig struct {
-	Extends          string          `yaml:"extends"`
-	Name             *string         `yaml:"name"`
-	AllowExtraFields *bool           `yaml:"allow_extra_fields"`
-	Fields           []fieldOverride `yaml:"fields"`
+	Extends           string          `yaml:"extends"`
+	Name              *string         `yaml:"name"`
+	AllowExtraFields  *bool           `yaml:"allow_extra_fields"`
+	EmptyIsNull       *bool           `yaml:"empty_is_null"`
+	QuotedEmptyIsNull *bool           `yaml:"quoted_empty_is_null"`
+	Fields            []fieldOverride `yaml:"fields"`
 }
 
 // fieldOverride changes the input-side settings of one base field, matched by
@@ -30,6 +32,8 @@ type fieldOverride struct {
 	HeaderPatterns         *[]string         `yaml:"header_patterns"`
 	ErrorMessage           *string           `yaml:"error_message"`
 	Required               *bool             `yaml:"required"`
+	EmptyIsNull            *bool             `yaml:"empty_is_null"`
+	QuotedEmptyIsNull      *bool             `yaml:"quoted_empty_is_null"`
 
 	// schema-side: rejected if present
 	Nullable    *bool `yaml:"nullable"`
@@ -128,7 +132,7 @@ func loadMerged(path string) (config Config, extended bool, err error) {
 
 const inputSideOnly = "a config that extends another may only change input-side settings " +
 	"(representations, prepend_representations, append_representations, header_patterns, " +
-	"error_message, required, allow_extra_fields), so the output schema stays the root's"
+	"error_message, required, empty_is_null, quoted_empty_is_null, allow_extra_fields), so the output schema stays the root's"
 
 // applyOverride merges an extending file's settings onto the config.
 func (conf *Config) applyOverride(override overrideConfig) error {
@@ -137,6 +141,12 @@ func (conf *Config) applyOverride(override overrideConfig) error {
 	}
 	if override.AllowExtraFields != nil {
 		conf.AllowExtraFields = override.AllowExtraFields
+	}
+	if override.EmptyIsNull != nil {
+		conf.EmptyIsNull = override.EmptyIsNull
+	}
+	if override.QuotedEmptyIsNull != nil {
+		conf.QuotedEmptyIsNull = override.QuotedEmptyIsNull
 	}
 
 	// copy the fields so changes never reach slices shared with the base
@@ -190,6 +200,12 @@ func (conf *Config) applyOverride(override overrideConfig) error {
 		}
 		if fo.Required != nil {
 			field.Required = fo.Required
+		}
+		if fo.EmptyIsNull != nil {
+			field.EmptyIsNull = fo.EmptyIsNull
+		}
+		if fo.QuotedEmptyIsNull != nil {
+			field.QuotedEmptyIsNull = fo.QuotedEmptyIsNull
 		}
 	}
 	conf.Fields = fields

@@ -609,15 +609,15 @@ def test_nullable_enum_without_namespace(build_path):
     assert [r["status"] for r in result.records] == ["open", None, "closed"]
 
 
-def test_empty_cell_on_nullable_field_without_null_representation_fails(build_path):
-    """TASK-7 (decision): nulls only come from is_null representations; an
-    empty cell on a nullable field that matches no representation is a data
-    failure like any other unmatched value."""
-    result = run_fixture(build_path, "nullable_empty_cell_unmatched", ["--fail-fast=false"])
-    assert result.returncode != 0, "Command should have failed"
-    assert not result.output_exists
-    assert "row 3, column 'count': value '' did not match any pattern" in result.stderr
-    assert "row 4" not in result.stderr
+def test_empty_cell_on_nullable_field_without_null_representation_is_null(build_path):
+    """TASK-7 decision-3 (nulls only from is_null representations) is
+    superseded by TASK-23: an empty cell on a nullable field is now null by
+    default (empty_is_null / quoted_empty_is_null), even when no is_null
+    representation matches it. A non-empty value that matches no
+    representation is still a data failure. TASK-23 AC#1, AC#5."""
+    result = run_fixture(build_path, "nullable_empty_cell_unmatched")
+    assert result.returncode == 0, result.stderr
+    assert [r["count"] for r in result.records] == [5, None, None]
 
 
 # --- TASK-8: optional columns (required: false) ---

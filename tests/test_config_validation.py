@@ -192,6 +192,10 @@ INVALID_CONFIG_FIXTURES = {
     # TASK-19 static decimal values that don't fit precision/scale (see test_logical_types.py)
     "config_rep_static_decimal_precision",
     "config_rep_static_decimal_scale",
+    # TASK-23 empty_is_null / quoted_empty_is_null on a non-nullable field (see test_empty_is_null.py)
+    "config_empty_is_null_not_nullable",
+    "config_quoted_empty_is_null_not_nullable",
+    "layered_empty_is_null_not_nullable",
 }
 
 

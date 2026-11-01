@@ -135,7 +135,7 @@ def test_parquet_values_for_every_logical_type(parquet_output):
             "at_time": datetime.time(0, 0),
             "ts": datetime.datetime(2038, 1, 19, 3, 14, 8, tzinfo=UTC),
             "flag": True,
-            "opt_name": "",  # an empty string, not null
+            "opt_name": "",  # a quoted empty cell with quoted_empty_is_null: false (TASK-23): an empty string, not null
             "opt_count": 0,
             "opt_amount": Decimal("-0.01"),
             "opt_ratio": -0.5,

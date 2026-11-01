@@ -1,0 +1,13 @@
+name: config_quoted_empty_is_null_not_nullable
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  - name: label
+    quoted_empty_is_null: true
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.*)$"

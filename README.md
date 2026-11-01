@@ -262,7 +262,7 @@ fields:
   ...
 ```
 
-Fields are not nullable by default: every value must resolve to a value of the field's type. Set `nullable: true` on a field to allow nulls. Nulls only come from representations marked `is_null: true` (see [Representations](#representations)), so the producer's null placeholders (`-`, `N/A`, an empty string, ...) are spelled out in the config. An empty cell on a nullable field is not null unless an `is_null` representation matches it; otherwise it fails like any other unmatched value.
+Fields are not nullable by default: every value must resolve to a value of the field's type. Set `nullable: true` on a field to allow nulls. On a nullable field, nulls come from empty cells (below) and from representations marked `is_null: true` (see [Representations](#representations)), which spell out the producer's other null placeholders (`-`, `N/A`, ...):
 
 ```yaml
   - name: discount
@@ -270,9 +270,42 @@ Fields are not nullable by default: every value must resolve to a value of the f
     logical_type:
       name: integer
     representations:
-      - pattern: "^(-|N/A|)$" # "-", "N/A" or an empty cell
+      - pattern: "^(-|N/A)$" # "-" or "N/A"; empty cells are null anyway
         is_null: true
       - pattern: "^[0-9]+$"
+```
+
+Two flags say how the producer writes null as an empty cell. Both default to `true`, since an empty cell is the most common way to write null (like `allow_extra_fields`, an exception to strict-by-default):
+
+| Flag | Default | Makes null on a nullable field |
+| --- | --- | --- |
+| `empty_is_null` | `true` | an unquoted empty cell: `a,,b` |
+| `quoted_empty_is_null` | `true` | a quoted empty cell: `a,"",b` |
+
+They are checked before the representations: when the flag for an empty cell is on, the cell is null whatever the representations say. With it off, the empty cell goes through the representations like any other value (e.g. a `string` field with a `^$` representation gets an empty string; with no representation matching an empty value it is a data failure). `is_null` representations never change how empty cells behave. The flags only cover truly empty cells: for whitespace-only cells, add an `is_null` representation such as `^\s*$`.
+
+Set either flag at the top level of the config as the default for every nullable field, or on a field to override the top-level setting for that field. Fields that are not nullable ignore the top-level settings (their empty cells only go through the representations), and setting either flag on such a field fails the config load, naming the field and the flag.
+
+For example, Postgres (`COPY ... WITH CSV`) writes null as an unquoted empty cell and an empty string as a quoted one, so with its files only `,,` should be null:
+
+```yaml
+name: com.example.customers
+quoted_empty_is_null: false # ,"", is an empty string, not null (for every nullable field)
+fields:
+  - name: middle_name
+    nullable: true
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^$" # a quoted empty cell: an empty string
+      - pattern: "^(.+)$"
+  - name: nickname
+    nullable: true
+    quoted_empty_is_null: true # this field overrides the top-level setting
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.+)$"
 ```
 
 Fields are required by default: the file must have a column for every field, and a missing one is a file-level error. Set `required: false` on a field whose column may be left out of the file. When the column is missing, the field is null in every row; when it is present, its values are parsed as usual. Since a missing column means null, `required: false` is only allowed on a field with `nullable: true`; on any other field it fails the config load, naming the field.
@@ -410,6 +443,7 @@ The root defines the contract and the output schema. A file that extends another
 | `header_patterns` | field | replaces the base list (an empty list goes back to matching on the name) |
 | `error_message` | field | replaces the base value |
 | `required` | field | replaces the base value |
+| `empty_is_null`, `quoted_empty_is_null` | top level and field | replaces the base value |
 
 Each entry under `fields` needs only a `name`, matched to a field of the base, plus the settings it changes. Fields it doesn't mention, and settings it doesn't set, are inherited unchanged; `fields` can be left out altogether. Removing single items from a list isn't supported: replace the list instead. Setting the schema `name`, a field's `logical_type` or `nullable`, or naming a field that isn't in the base, fails the load, naming the file and the setting or field (so fields can't be added, removed or reordered). Unknown keys fail as in any config.
 

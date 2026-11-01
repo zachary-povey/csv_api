@@ -54,6 +54,9 @@ fields:
       - pattern: "^(true|false)$"
   - name: opt_name
     nullable: true
+    # TASK-23: a quoted empty cell stays an empty string (not null), so the
+    # writers' empty string vs null distinction is still tested
+    quoted_empty_is_null: false
     logical_type:
       name: string
     representations:

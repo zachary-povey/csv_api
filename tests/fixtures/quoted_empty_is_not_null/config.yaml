@@ -1,0 +1,16 @@
+name: quoted_empty_is_not_null
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  # Postgres COPY ... CSV style: ,, is null and ,"", is an empty string
+  - name: note
+    nullable: true
+    quoted_empty_is_null: false
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^$"
+      - pattern: "^(.+)$"

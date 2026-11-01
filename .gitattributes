@@ -1,0 +1,2 @@
+# keep CRLF line endings: the fixture tests them (TASK-23 AC#10)
+tests/fixtures/empty_is_null_line_endings/data.csv -text

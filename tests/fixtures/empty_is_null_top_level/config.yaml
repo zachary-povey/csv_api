@@ -1,0 +1,23 @@
+name: empty_is_null_top_level
+# defaults for every nullable field; id is not nullable and is unaffected
+empty_is_null: false
+quoted_empty_is_null: false
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  - name: inherits
+    nullable: true
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.*)$"
+  - name: overrides
+    nullable: true
+    empty_is_null: true
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.*)$"

@@ -1,0 +1,20 @@
+name: empty_is_null_line_endings
+quoted_empty_is_null: false
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  - name: text
+    nullable: true
+    logical_type:
+      name: string
+    representations:
+      - pattern: "(?s)^(.*)$"
+  - name: last
+    nullable: true
+    logical_type:
+      name: string
+    representations:
+      - pattern: "(?s)^(.*)$"

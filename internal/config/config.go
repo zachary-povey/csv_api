@@ -14,8 +14,13 @@ type Config struct {
 	// AllowExtraFields lets the file have columns that map to no field (they
 	// are ignored). Defaults to true; false makes each such column a
 	// file-level error. A pointer so an unset value can be told apart.
-	AllowExtraFields *bool         `yaml:"allow_extra_fields,omitempty"`
-	Fields           []FieldConfig `yaml:"fields" validate:"required,dive"`
+	AllowExtraFields *bool `yaml:"allow_extra_fields,omitempty"`
+	// EmptyIsNull and QuotedEmptyIsNull are the defaults for every nullable
+	// field's empty_is_null and quoted_empty_is_null (see FieldConfig).
+	// Unset means true.
+	EmptyIsNull       *bool         `yaml:"empty_is_null,omitempty"`
+	QuotedEmptyIsNull *bool         `yaml:"quoted_empty_is_null,omitempty"`
+	Fields            []FieldConfig `yaml:"fields" validate:"required,dive"`
 }
 
 // ExtraFieldsAllowed reports whether columns that map to no field are
@@ -34,6 +39,12 @@ type FieldConfig struct {
 	// Nullable fields may hold null (written to Avro as a union with null).
 	// Only nullable fields may have is_null representations.
 	Nullable bool `yaml:"nullable,omitempty"`
+	// EmptyIsNull makes an unquoted empty cell (,,) of a nullable field null,
+	// and QuotedEmptyIsNull a quoted one (,"",), before any representation is
+	// tried. Unset takes the config's top-level value (itself true when
+	// unset); only nullable fields may set them.
+	EmptyIsNull       *bool `yaml:"empty_is_null,omitempty"`
+	QuotedEmptyIsNull *bool `yaml:"quoted_empty_is_null,omitempty"`
 	// Required fields must have a column in the file. Defaults to true; a
 	// missing optional (required: false) column is null for every row, so
 	// only nullable fields may be optional.
@@ -251,6 +262,11 @@ func (conf *Config) check() error {
 		return err
 	}
 
+	err = conf.checkEmptyIsNull()
+	if err != nil {
+		return err
+	}
+
 	err = conf.checkEnumNames()
 	if err != nil {
 		return err
@@ -377,6 +393,45 @@ func (conf Config) checkRequired() error {
 		if !field.IsRequired() && !field.Nullable {
 			return fmt.Errorf("field '%s': required: false is only allowed on a nullable field "+
 				"(a missing column is null; add 'nullable: true' to the field)", field.Name)
+		}
+	}
+	return nil
+}
+
+// EmptyCellIsNull reports whether an empty cell of the field, quoted (,"",)
+// or not (,,), is null: the field's empty_is_null or quoted_empty_is_null,
+// else the config's top-level one, else true. Always false for a field that
+// is not nullable.
+func (conf Config) EmptyCellIsNull(field FieldConfig, quoted bool) bool {
+	if !field.Nullable {
+		return false
+	}
+	setting, topLevel := field.EmptyIsNull, conf.EmptyIsNull
+	if quoted {
+		setting, topLevel = field.QuotedEmptyIsNull, conf.QuotedEmptyIsNull
+	}
+	if setting == nil {
+		setting = topLevel
+	}
+	return setting == nil || *setting
+}
+
+// checkEmptyIsNull rejects empty_is_null or quoted_empty_is_null set on a
+// field that is not nullable (its empty cells can't be null). The top-level
+// settings only apply to nullable fields, so they never fail.
+func (conf Config) checkEmptyIsNull() error {
+	for _, field := range conf.Fields {
+		if field.Nullable {
+			continue
+		}
+		for _, flag := range []struct {
+			name  string
+			value *bool
+		}{{"empty_is_null", field.EmptyIsNull}, {"quoted_empty_is_null", field.QuotedEmptyIsNull}} {
+			if flag.value != nil {
+				return fmt.Errorf("field '%s': %s is only allowed on a nullable field "+
+					"(add 'nullable: true' to the field)", field.Name, flag.name)
+			}
 		}
 	}
 	return nil

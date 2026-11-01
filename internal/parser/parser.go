@@ -90,6 +90,10 @@ type Parser struct {
 	columnLabels []string
 	// the header of each field's column, in config order ("" if missing)
 	columnNames []string
+	// whether an empty cell is null before representations are tried, per
+	// field in config order, for unquoted (,,) and quoted (,"",) cells
+	emptyIsNull       []bool
+	quotedEmptyIsNull []bool
 	// optional destination for rows dropped for invalid data
 	dataFailureWriter *csv.Writer
 
@@ -108,8 +112,12 @@ type Parser struct {
 func NewParser(conf *config.Config, opts options.Options, dataFailureWriter *csv.Writer, columnNames []string) (*Parser, error) {
 	representations := make([][]compiledRepresentation, len(conf.Fields))
 	columnLabels := make([]string, len(conf.Fields))
+	emptyIsNull := make([]bool, len(conf.Fields))
+	quotedEmptyIsNull := make([]bool, len(conf.Fields))
 	for i, field := range conf.Fields {
 		columnLabels[i] = columnLabel(field.Name, columnNames[i])
+		emptyIsNull[i] = conf.EmptyCellIsNull(field, false)
+		quotedEmptyIsNull[i] = conf.EmptyCellIsNull(field, true)
 		for _, rep := range field.Representations {
 			compiled, err := compileRepresentation(rep)
 			if err != nil {
@@ -124,6 +132,8 @@ func NewParser(conf *config.Config, opts options.Options, dataFailureWriter *csv
 		representations:   representations,
 		columnLabels:      columnLabels,
 		columnNames:       columnNames,
+		emptyIsNull:       emptyIsNull,
+		quotedEmptyIsNull: quotedEmptyIsNull,
 		dataFailureWriter: dataFailureWriter,
 		Workers:           runtime.GOMAXPROCS(0),
 	}, nil
@@ -192,6 +202,11 @@ func (p *Parser) parseRow(row reader.Record) (map[string]any, []error_tracking.C
 			resolvedRow[p.config.Fields[i].Name] = nil
 			continue
 		}
+		if *value == "" && p.emptyCellIsNull(i, row) {
+			// empty_is_null / quoted_empty_is_null (nullable fields only)
+			resolvedRow[p.config.Fields[i].Name] = nil
+			continue
+		}
 		parsed_value, err := p.parseValue(i, *value)
 		if err != nil {
 			failures = append(failures, error_tracking.CellError{
@@ -208,6 +223,15 @@ func (p *Parser) parseRow(row reader.Record) (map[string]any, []error_tracking.C
 		resolvedRow[p.config.Fields[i].Name] = parsed_value
 	}
 	return resolvedRow, failures
+}
+
+// emptyCellIsNull reports whether the empty cell of field i in row is null
+// from the field's empty_is_null or quoted_empty_is_null.
+func (p *Parser) emptyCellIsNull(i int, row reader.Record) bool {
+	if row.QuotedEmpty != nil && row.QuotedEmpty[i] {
+		return p.quotedEmptyIsNull[i]
+	}
+	return p.emptyIsNull[i]
 }
 
 // batch is a run of consecutive rows parsed by one worker. done is closed

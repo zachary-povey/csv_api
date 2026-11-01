@@ -1,0 +1,17 @@
+name: empty_cell_not_nullable
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  - name: label
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.*)$"
+  - name: count
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
