@@ -1,3 +1,4 @@
+name: timestamp_timezone_conversion
 fields:
   - name: created_at
     logical_type:

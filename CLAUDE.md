@@ -32,7 +32,7 @@ CSV → Reader Channel → Parser Channel → Avro Writer → Avro File
 
 ### Configuration Format
 
-Fields are defined in YAML with:
+A config has a required top-level `name` (a valid Avro name, used as the output record name). Fields are defined in YAML with:
 
 - `name`: Field identifier
 - `logical_type`: Type definition (name + optional args for decimals/enums)

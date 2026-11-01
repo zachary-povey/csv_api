@@ -1,3 +1,4 @@
+name: decimal_invalid_format
 fields:
   - name: price
     logical_type:

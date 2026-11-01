@@ -1,3 +1,4 @@
+name: decimal_split_parts
 fields:
   - name: currency
     logical_type:

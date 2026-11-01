@@ -1,3 +1,4 @@
+name: config_rep_static_month_not_numeric
 fields:
   - name: d
     logical_type:

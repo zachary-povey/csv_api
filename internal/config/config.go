@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/go-viper/mapstructure/v2"
@@ -10,6 +12,7 @@ import (
 )
 
 type Config struct {
+	Name   string        `yaml:"name"`
 	Fields []FieldConfig `yaml:"fields" validate:"required,dive"`
 }
 
@@ -172,6 +175,10 @@ func LoadConfig(filename string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal yaml: %w", err)
 	}
+	err = CheckAvroName(config.Name)
+	if err != nil {
+		return nil, err
+	}
 	validate := validator.New(validator.WithRequiredStructEnabled())
 	err = validate.Struct(config)
 	if err != nil {
@@ -185,12 +192,52 @@ func LoadConfig(filename string) (*Config, error) {
 		}
 	}
 
+	err = config.checkEnumNames()
+	if err != nil {
+		return nil, err
+	}
+
 	err = config.checkRepresentations()
 	if err != nil {
 		return nil, err
 	}
 
 	return &config, nil
+}
+
+var avroNameSegment = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// CheckAvroName checks the config's top-level name, which becomes the Avro
+// record name. It is required, and must be a valid Avro fullname: one or more
+// dot-separated segments, each matching [A-Za-z_][A-Za-z0-9_]*. Segments
+// before the last one form the Avro namespace.
+func CheckAvroName(name string) error {
+	if name == "" {
+		return fmt.Errorf("config 'name' is required: it is used as the Avro schema name")
+	}
+	for _, segment := range strings.Split(name, ".") {
+		if !avroNameSegment.MatchString(segment) {
+			return fmt.Errorf("config name '%s' is not a valid Avro name: "+
+				"each dot-separated part must start with a letter or underscore "+
+				"and contain only letters, digits and underscores", name)
+		}
+	}
+	return nil
+}
+
+// checkEnumNames rejects an enum field named the same as the record. Enum
+// types are named after their field and share the record's namespace, so the
+// clash would redefine the record's named type and readers reject the file.
+func (conf Config) checkEnumNames() error {
+	parts := strings.Split(conf.Name, ".")
+	recordName := parts[len(parts)-1]
+	for _, field := range conf.Fields {
+		if _, isEnum := field.LogicalTypeConfig.(EnumTypeConfig); isEnum && field.Name == recordName {
+			return fmt.Errorf("field '%s': an enum field can't have the same name as the config "+
+				"(its Avro enum type would clash with the record type '%s')", field.Name, conf.Name)
+		}
+	}
+	return nil
 }
 
 func (conf Config) AllFieldNames() []string {

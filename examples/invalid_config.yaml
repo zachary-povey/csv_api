@@ -1,3 +1,4 @@
+name: invalid_config
 fieldsx:
   - name: column_2
     logical_type:

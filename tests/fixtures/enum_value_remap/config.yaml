@@ -1,3 +1,4 @@
+name: enum_value_remap
 fields:
   - name: status
     logical_type:

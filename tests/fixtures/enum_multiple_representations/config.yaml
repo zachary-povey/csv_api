@@ -1,3 +1,4 @@
+name: enum_multiple_representations
 fields:
   - name: priority
     logical_type:

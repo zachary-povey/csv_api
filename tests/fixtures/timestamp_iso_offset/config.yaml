@@ -1,3 +1,4 @@
+name: timestamp_iso_offset
 fields:
   - name: created_at
     logical_type:

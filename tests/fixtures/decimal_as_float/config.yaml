@@ -1,3 +1,4 @@
+name: decimal_as_float
 fields:
   - name: price
     logical_type:

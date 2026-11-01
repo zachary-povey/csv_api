@@ -1,3 +1,4 @@
+name: test_config_invalid
 fields:
   - name: column_1
     logical_type:

@@ -14,11 +14,11 @@ import (
 
 const tmpl string = `
 {
-	"name": "test_schema",
+	"name": "{{.Name}}",
 	"type": "record",
 	"fields": [
-	{{- $total := len . }}
-	{{- range $i, $value := . }}
+	{{- $total := len .Fields }}
+	{{- range $i, $value := .Fields }}
 		{"name": "{{$value.Name}}", "type": {{map_type_json $value}}}{{if ne $i (subtract $total 1)}},{{end}}
 	{{- end }}
 	]
@@ -79,7 +79,7 @@ func generateSchema(config *config.Config) string {
 		panic(err)
 	}
 	var builder strings.Builder
-	if err := t.Execute(&builder, config.Fields); err != nil {
+	if err := t.Execute(&builder, config); err != nil {
 		panic(err)
 	}
 

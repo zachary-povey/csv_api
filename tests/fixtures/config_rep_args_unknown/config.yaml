@@ -1,3 +1,4 @@
+name: config_rep_args_unknown
 fields:
   - name: d
     logical_type:

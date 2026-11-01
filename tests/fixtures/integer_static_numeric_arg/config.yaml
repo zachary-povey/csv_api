@@ -1,3 +1,4 @@
+name: integer_static_numeric_arg
 fields:
   - name: id
     logical_type:

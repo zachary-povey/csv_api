@@ -1,3 +1,4 @@
+name: date_custom_format
 fields:
   - name: event_date
     logical_type:

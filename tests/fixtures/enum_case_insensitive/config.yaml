@@ -1,3 +1,4 @@
+name: enum_case_insensitive
 fields:
   - name: status
     logical_type:

@@ -1,3 +1,4 @@
+name: time_iso
 fields:
   - name: event_time
     logical_type:

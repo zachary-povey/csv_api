@@ -1,3 +1,4 @@
+name: timestamp_custom_format
 fields:
   - name: created_at
     logical_type:

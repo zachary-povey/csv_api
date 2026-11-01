@@ -1,3 +1,4 @@
+name: integer_invalid_value
 fields:
   - name: id
     logical_type:

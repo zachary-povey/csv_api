@@ -1,3 +1,4 @@
+name: time_fractional_seconds
 fields:
   - name: event_time
     logical_type:

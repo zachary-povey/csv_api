@@ -1,3 +1,4 @@
+name: timestamp_invalid
 fields:
   - name: created_at
     logical_type:

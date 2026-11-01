@@ -1,3 +1,4 @@
+name: config_rep_static_enum_not_permitted
 fields:
   - name: status
     logical_type:

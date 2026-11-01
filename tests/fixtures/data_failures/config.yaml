@@ -1,3 +1,4 @@
+name: data_failures
 fields:
   - name: id
     logical_type:

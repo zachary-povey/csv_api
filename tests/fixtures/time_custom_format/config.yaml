@@ -1,3 +1,4 @@
+name: time_custom_format
 fields:
   - name: event_time
     logical_type:

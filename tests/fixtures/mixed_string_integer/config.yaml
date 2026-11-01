@@ -1,3 +1,4 @@
+name: mixed_string_integer
 fields:
   - name: name
     logical_type:

@@ -1,3 +1,4 @@
+name: time_edge_cases
 fields:
   - name: event_time
     logical_type:

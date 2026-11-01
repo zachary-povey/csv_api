@@ -1,3 +1,4 @@
+name: config_rep_args_conflicting
 fields:
   - name: ts
     logical_type:

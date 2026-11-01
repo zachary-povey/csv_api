@@ -1,3 +1,4 @@
+name: simple_integers
 fields:
   - name: id
     logical_type:

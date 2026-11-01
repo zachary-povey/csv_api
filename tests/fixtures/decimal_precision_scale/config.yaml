@@ -1,3 +1,4 @@
+name: decimal_precision_scale
 fields:
   - name: amount
     logical_type:

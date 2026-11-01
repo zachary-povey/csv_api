@@ -1,3 +1,4 @@
+name: decimal_conflicting_args
 fields:
   - name: amount
     logical_type:

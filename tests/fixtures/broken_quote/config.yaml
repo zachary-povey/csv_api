@@ -1,3 +1,4 @@
+name: broken_quote
 fields:
   - name: id
     logical_type:

@@ -1,3 +1,4 @@
+name: enum_mixed_types
 fields:
   - name: name
     logical_type:

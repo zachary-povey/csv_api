@@ -1,0 +1,9 @@
+name: com.example.status
+fields:
+  - name: status
+    logical_type:
+      name: enum
+      args:
+        permitted_values: [open, closed]
+    representations:
+      - pattern: "^(open|closed)$"

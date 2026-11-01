@@ -1,3 +1,4 @@
+name: enum_invalid_value
 fields:
   - name: status
     logical_type:

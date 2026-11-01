@@ -1,3 +1,4 @@
+name: decimal_precision_scale_split_parts_leading_zeros
 fields:
   - name: measurement
     logical_type:

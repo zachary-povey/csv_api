@@ -1,3 +1,4 @@
+name: config_unknown_field_key
 fields:
   - name: label
     logical_type:

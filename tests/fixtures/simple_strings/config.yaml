@@ -1,3 +1,4 @@
+name: simple_strings
 fields:
   - name: name
     logical_type:

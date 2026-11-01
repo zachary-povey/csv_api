@@ -21,6 +21,8 @@ class FixtureResult:
         output_exists: Whether the Avro output file exists after the run.
         data_failure_rows: Rows of the data failure report (header first),
             populated only when one was requested and written.
+        writer_schema: The Avro schema stored in the output file, populated
+            only when returncode is 0.
     """
 
     returncode: int
@@ -29,6 +31,7 @@ class FixtureResult:
     records: list[dict] = field(default_factory=list)
     output_exists: bool = False
     data_failure_rows: list[list[str]] = field(default_factory=list)
+    writer_schema: dict | None = None
 
 
 def get_build_path() -> Path:
@@ -108,10 +111,10 @@ def run_fixture(
             args += ["--data-failure-report", str(report_path)]
         proc = run_csv_api(build_path, config_path, data_path, output_path, args)
         output_exists = output_path.exists()
-        records = (
-            read_avro_file(output_path)
+        records, writer_schema = (
+            read_avro_file_with_schema(output_path)
             if proc.returncode == 0 and output_exists
-            else []
+            else ([], None)
         )
         data_failure_rows = []
         if report_path.exists():
@@ -125,6 +128,7 @@ def run_fixture(
         records=records,
         output_exists=output_exists,
         data_failure_rows=data_failure_rows,
+        writer_schema=writer_schema,
     )
 
 
@@ -137,12 +141,22 @@ def read_avro_file(file_path) -> list[dict]:
     Returns:
         List of records as dicts.
     """
-    records = []
+    return read_avro_file_with_schema(file_path)[0]
+
+
+def read_avro_file_with_schema(file_path) -> tuple[list[dict], dict]:
+    """Read records and the writer schema from an Avro file.
+
+    Args:
+        file_path: Path to the Avro file.
+
+    Returns:
+        The records as dicts, and the writer schema stored in the file.
+    """
     with open(file_path, "rb") as f:
         reader = fastavro.reader(f)
-        for record in reader:
-            records.append(record)
-    return records
+        records = list(reader)
+        return records, reader.writer_schema
 
 
 def run_validate_config(build_path: Path, fixture_name: str) -> subprocess.CompletedProcess:

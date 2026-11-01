@@ -115,6 +115,7 @@ A broken quote stops processing even with `--fail-fast=false`, since the rows af
 A config lists the fields expected in the file. Each field has a logical type (what the value means) and one or more representations (how that value is written in the csv).
 
 ```yaml
+name: com.example.orders # the Avro schema name (required)
 fields:
   - name: some_date # must match the csv column header exactly
     logical_type:
@@ -150,6 +151,10 @@ fields:
         args:
           value: active
 ```
+
+### Name
+
+`name` is required and becomes the name of the Avro record in the output schema, so downstream consumers see a meaningful schema name. It must be a valid Avro name: it starts with a letter or underscore and contains only letters, digits and underscores. It may be a dotted fullname such as `com.example.orders`, in which case the parts before the last dot are the Avro namespace (enum types in the schema, which are named after their field, share that namespace). Because of that, an enum field can't have the same name as the last part of `name`. A missing or invalid name fails the config load.
 
 ### Fields
 
@@ -199,7 +204,6 @@ At run time the converters check that the args make a valid value (e.g. a real c
 
 These are intended but not built yet. Work is tracked as tasks with [Backlog.md](https://github.com/MrLesk/Backlog.md) in `backlog/` (run `backlog board` or `backlog task list`).
 
-- `name`: a config-level name for the Avro schema (currently always `test_schema`)
 - `header_patterns`: regex matching of csv headers to fields, instead of an exact match on `name`
 - `allow_extra_fields`: option to reject columns not in the config (currently they are always ignored)
 - `required`: per-field option to allow a column to be missing (currently every field is required)

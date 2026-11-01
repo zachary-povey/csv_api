@@ -1,0 +1,14 @@
+name: com.example.orders
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  - name: status
+    logical_type:
+      name: enum
+      args:
+        permitted_values: [open, closed]
+    representations:
+      - pattern: "^(open|closed)$"

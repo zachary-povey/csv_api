@@ -1,3 +1,4 @@
+name: integer_invalid_format
 fields:
   - name: number
     logical_type:

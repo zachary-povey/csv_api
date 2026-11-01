@@ -1,3 +1,4 @@
+name: empty_required_field
 fields:
   - name: name
     logical_type:

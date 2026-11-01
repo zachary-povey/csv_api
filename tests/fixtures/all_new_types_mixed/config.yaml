@@ -1,3 +1,4 @@
+name: all_new_types_mixed
 fields:
   - name: employee_name
     logical_type:

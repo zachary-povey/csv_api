@@ -1,3 +1,4 @@
+name: config_rep_static_integer_fraction
 fields:
   - name: n
     logical_type:

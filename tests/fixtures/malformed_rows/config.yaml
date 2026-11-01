@@ -1,3 +1,4 @@
+name: malformed_rows
 fields:
   - name: id
     logical_type:

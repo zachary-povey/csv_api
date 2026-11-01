@@ -1,3 +1,4 @@
+name: config_invalid_type_args
 fields:
   - name: amount
     logical_type:

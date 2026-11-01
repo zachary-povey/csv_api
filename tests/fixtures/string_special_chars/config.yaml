@@ -1,3 +1,4 @@
+name: string_special_chars
 fields:
   - name: text
     logical_type:

@@ -162,6 +162,9 @@ def test_validate_config_reports_representation_arg_errors(build_path, fixture_n
 # fixtures whose config is meant to be invalid
 INVALID_CONFIG_FIXTURES = {
     "config_invalid_type_args",
+    "config_name_enum_clash",
+    "config_name_invalid",
+    "config_name_missing",
     "config_unknown_field_key",
     "config_unknown_logical_type_key",
     "config_unknown_type_arg",
@@ -182,3 +185,71 @@ def test_existing_fixtures_still_load(build_path, fixture_name):
     """TASK-9 AC#4: every existing (valid) test fixture still loads with the arg check."""
     result = run_validate_config(build_path, fixture_name)
     assert result.returncode == 0, result.stderr
+
+
+# --- TASK-4: config name is the Avro schema name ---
+
+
+def test_config_name_is_avro_schema_name(build_path):
+    """TASK-4 AC#1: the top-level config `name` is used as the Avro record name."""
+    result = run_fixture(build_path, "simple_strings")
+    assert result.returncode == 0, result.stderr
+    assert result.writer_schema["type"] == "record"
+    assert result.writer_schema["name"] == "simple_strings"
+
+
+def test_dotted_config_name_sets_avro_namespace(build_path):
+    """TASK-4 AC#1: a dotted name is an Avro fullname; the leading parts are the
+    namespace, which the enum type defined in the record inherits."""
+    result = run_validate_config(build_path, "config_name_namespaced")
+    assert result.returncode == 0, result.stderr
+
+    result = run_fixture(build_path, "config_name_namespaced")
+    assert result.returncode == 0, result.stderr
+    assert result.writer_schema["name"] == "com.example.orders"
+    status_type = result.writer_schema["fields"][1]["type"]
+    assert status_type["name"] == "com.example.status"
+    assert [r["status"] for r in result.records] == ["open", "closed"]
+
+
+def test_invalid_config_name_fails_parse(build_path):
+    """TASK-4 AC#2: a name that is not a valid Avro name fails config load."""
+    result = run_fixture(build_path, "config_name_invalid")
+    assert result.returncode != 0, "Command should have failed"
+    assert not result.output_exists
+    assert "config name 'daily-orders' is not a valid Avro name" in result.stderr
+    assert "row " not in result.stderr
+
+
+def test_validate_config_reports_invalid_name(build_path):
+    """TASK-4 AC#2: validate_config reports a name that is not a valid Avro name."""
+    result = run_validate_config(build_path, "config_name_invalid")
+    assert result.returncode != 0, "validate_config should have failed"
+    assert "config name 'daily-orders' is not a valid Avro name" in result.stderr
+    assert "config file is not valid" in result.stderr
+
+
+def test_missing_config_name_fails(build_path):
+    """TASK-4 AC#3: `name` is required (decision-2); a config without it fails to
+    load in both parse and validate_config."""
+    result = run_fixture(build_path, "config_name_missing")
+    assert result.returncode != 0, "Command should have failed"
+    assert not result.output_exists
+    assert "config 'name' is required" in result.stderr
+
+    result = run_validate_config(build_path, "config_name_missing")
+    assert result.returncode != 0, "validate_config should have failed"
+    assert "config 'name' is required" in result.stderr
+
+
+def test_enum_field_named_like_config_fails(build_path):
+    """TASK-4 AC#2: an enum field named the same as the config would redefine the
+    record's Avro named type (readers reject the file), so config load fails."""
+    result = run_fixture(build_path, "config_name_enum_clash")
+    assert result.returncode != 0, "Command should have failed"
+    assert not result.output_exists
+    assert "field 'status': an enum field can't have the same name as the config" in result.stderr
+
+    result = run_validate_config(build_path, "config_name_enum_clash")
+    assert result.returncode != 0, "validate_config should have failed"
+    assert "field 'status'" in result.stderr

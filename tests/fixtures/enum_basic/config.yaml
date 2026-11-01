@@ -1,3 +1,4 @@
+name: enum_basic
 fields:
   - name: status
     logical_type:
