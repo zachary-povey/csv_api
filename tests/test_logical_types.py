@@ -1,6 +1,9 @@
 import datetime
 import decimal
-from tests.utils import run_fixture
+
+import pyarrow.parquet as pq
+
+from tests.utils import FIXTURES_DIR, read_avro_file, run_csv_api, run_fixture
 
 
 def test_simple_string_fields(build_path):
@@ -205,6 +208,100 @@ def test_decimal_precision_scale_validation_failure(build_path):
         or "as_float" in result.stderr
         or "mutually exclusive" in result.stderr.lower()
     ), f"Error should mention config validation issue: {result.stderr} {result.stdout}"
+
+
+def test_decimal_too_many_fractional_digits_is_data_failure(build_path):
+    """TASK-19 AC#1: a value with more fractional digits than the scale is a
+    data failure naming the row, column, value and scale (for both the value
+    and the integer_part+decimal_part arg sets), not silently rounded."""
+    result = run_fixture(build_path, "decimal_exceeds_scale", ["--fail-fast=false"])
+    assert result.returncode != 0, "Command should have failed"
+    assert not result.output_exists
+    assert (
+        "row 3, column 'amount': failed to convert '1.234' to decimal: "
+        "'1.234' has more than 2 fractional digits (scale 2)"
+    ) in result.stderr
+    assert (
+        "row 4, column 'parts': failed to convert '-0.001' to decimal: "
+        "'-0.001' has more than 2 fractional digits (scale 2)"
+    ) in result.stderr
+    assert "row 2" not in result.stderr
+
+
+def test_decimal_too_many_integer_digits_is_data_failure(build_path):
+    """TASK-19 AC#2: a value with more than precision-scale integer digits is a
+    data failure naming the row, column, value and precision, not written as a
+    corrupted value."""
+    result = run_fixture(build_path, "decimal_exceeds_precision", ["--fail-fast=false"])
+    assert result.returncode != 0, "Command should have failed"
+    assert not result.output_exists
+    assert (
+        "row 3, column 'amount': failed to convert '123456.7' to decimal: "
+        "'123456.7' has more than 2 integer digits (precision 4, scale 2)"
+    ) in result.stderr
+    assert (
+        "row 4, column 'parts': failed to convert '-100.00' to decimal: "
+        "'-100.00' has more than 2 integer digits (precision 4, scale 2)"
+    ) in result.stderr
+    assert "row 2" not in result.stderr
+
+
+DECIMALS_THAT_FIT = [
+    decimal.Decimal(v)
+    for v in ["1.50", "-12.34", "1.50", "1.23", "99.99", "-99.99", "0.05", "0.00"]
+]
+
+
+def test_decimal_values_that_fit_are_written_exactly(build_path, tmp_path):
+    """TASK-19 AC#3: values that fit precision 4, scale 2 (fewer fractional
+    digits than the scale, negatives, leading zeros, and trailing zeros beyond
+    the scale that don't change the value, e.g. 1.230) are written exactly in
+    both the Avro and the Parquet output."""
+    fixture = FIXTURES_DIR / "decimal_fits_precision_scale"
+    for output_format in ["avro", "parquet"]:
+        output_path = tmp_path / f"output.{output_format}"
+        proc = run_csv_api(
+            build_path,
+            fixture / "config.yaml",
+            fixture / "data.csv",
+            output_path,
+            ["--output-format", output_format],
+        )
+        assert proc.returncode == 0, proc.stderr
+        if output_format == "avro":
+            records = read_avro_file(output_path)
+        else:
+            records = pq.read_table(output_path).to_pylist()
+        for column in ["amount", "parts"]:
+            values = [r[column] for r in records]
+            assert values == DECIMALS_THAT_FIT, (output_format, column)
+            # exact at the field's scale, not just numerically equal
+            assert [v.as_tuple().exponent for v in values] == [-2] * len(values)
+
+
+def test_decimal_static_value_must_fit_precision_scale(build_path):
+    """TASK-19 AC#4: a static decimal value arg that does not fit the field's
+    precision or scale fails config load, naming the field and pattern."""
+    cases = [
+        ("config_rep_static_decimal_scale", "^third$", "'0.333' has more than 2 fractional digits (scale 2)"),
+        ("config_rep_static_decimal_precision", "^max$", "'1000' has more than 2 integer digits (precision 4, scale 2)"),
+    ]
+    for fixture_name, pattern, expected in cases:
+        result = run_fixture(build_path, fixture_name)
+        assert result.returncode != 0, fixture_name
+        assert not result.output_exists
+        assert f"field 'amount', pattern '{pattern}': static arg 'value': {expected}" in result.stderr
+        # the config fails at load, before any row is read
+        assert "row " not in result.stderr
+
+
+def test_decimal_as_float_has_no_precision_scale_check(build_path):
+    """TASK-19 AC#5: an as_float decimal is unchanged: any number of integer or
+    fractional digits converts to a double."""
+    result = run_fixture(build_path, "decimal_as_float_unchecked")
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    assert [r["ratio"] for r in result.records] == [1.23456789, 123456.7]
+    assert [r["parts"] for r in result.records] == [1.23456789, 123456.7]
 
 
 # --- Enum Tests ---

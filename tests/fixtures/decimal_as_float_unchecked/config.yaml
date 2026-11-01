@@ -1,0 +1,16 @@
+name: decimal_as_float_unchecked
+fields:
+  - name: ratio
+    logical_type:
+      name: decimal
+      args:
+        as_float: true
+    representations:
+      - pattern: "^(?P<value>-?[0-9]+\\.?[0-9]*)$"
+  - name: parts
+    logical_type:
+      name: decimal
+      args:
+        as_float: true
+    representations:
+      - pattern: "^(?P<integer_part>-?[0-9]+)\\.(?P<decimal_part>[0-9]+)$"

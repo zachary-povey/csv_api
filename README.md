@@ -342,12 +342,12 @@ The value args each type accepts:
 | Type | Value args |
 | --- | --- |
 | `string`, `integer`, `enum`, `boolean` | `value` (for `boolean`, exactly `true` or `false`) |
-| `decimal` | `value`, or `integer_part` and `decimal_part` |
+| `decimal` | `value`, or `integer_part` and `decimal_part` (for a precise decimal, the value must fit `precision` and `scale`, see below) |
 | `date` | `year`, `month`, `day` |
 | `time` | `hour`, `minute`, `second`, `millisecond`, `microsecond` (all optional, default 0) |
 | `timestamp` | `value` and `precision` (`seconds`, `milliseconds` or `microseconds`), with optional `offset`; or `year`, `month`, `day` with optional `hour`, `minute`, `second`, `millisecond`, `microsecond` and `timezone` (e.g. `+01:00`) |
 
-When the config loads, each representation is checked against this table: the args from its capture groups and static `args` must form one of the type's arg sets, with nothing missing and no unknown names (e.g. a `date` pattern with a `yr` group fails). Static arg values are checked too where they can be on their own: integer-valued args must be whole numbers, an `enum` `value` must be in `permitted_values`, a `boolean` `value` must be `true` or `false` (a YAML bool or the string), and a timestamp `precision` or `timezone` must be valid. A failed check names the field and pattern, and `validate_config` reports it. Representations with `is_null: true` are checked separately (below), since they provide no value args.
+When the config loads, each representation is checked against this table: the args from its capture groups and static `args` must form one of the type's arg sets, with nothing missing and no unknown names (e.g. a `date` pattern with a `yr` group fails). Static arg values are checked too where they can be on their own: integer-valued args must be whole numbers, an `enum` `value` must be in `permitted_values`, a `boolean` `value` must be `true` or `false` (a YAML bool or the string), a static decimal `value` must fit the field's `precision` and `scale`, and a timestamp `precision` or `timezone` must be valid. A failed check names the field and pattern, and `validate_config` reports it. Representations with `is_null: true` are checked separately (below), since they provide no value args.
 
 A representation with `is_null: true` makes a matching value null instead of handing args to a converter. It is only allowed on a field with `nullable: true`, and since it provides no value args it can't have static `args` or named capture groups (unnamed groups such as `^(-|N/A)$` are fine). Breaking either rule fails the config load, naming the field. Like any representation it is tried in order, so put it before a broader pattern that would also match the placeholder.
 
@@ -367,6 +367,14 @@ The `boolean` converter accepts only `true` and `false`. Map a producer's own sp
 ```
 
 At run time the converters check that the args make a valid value (e.g. a real calendar date, or a captured enum value in `permitted_values`), and report a cell error if not.
+
+A precise `decimal` (with `precision` and `scale`) checks that the value fits: at most `scale` fractional digits and at most `precision - scale` integer digits. A value that doesn't fit is a cell error naming the scale or precision, rather than being rounded or truncated, e.g. with `precision: 4, scale: 2`:
+
+```
+row 3, column 'amount': failed to convert '1.234' to decimal: '1.234' has more than 2 fractional digits (scale 2) (resolved args: map[value:1.234])
+```
+
+The check is on the value, not the text: fewer fractional digits than the scale (`1.5` is written as `1.50`), leading zeros (`0001.50`) and trailing fractional zeros that don't change the value (`1.230` is exactly `1.23`) are accepted. Values that fit are written exactly in both Avro and Parquet output. An `as_float` decimal has no precision or scale and is not checked.
 
 ### Layered configs
 

@@ -189,6 +189,9 @@ INVALID_CONFIG_FIXTURES = {
     "layered_missing",
     # TASK-15 bad static boolean arg (see test_logical_types.py)
     "config_rep_static_boolean_bad",
+    # TASK-19 static decimal values that don't fit precision/scale (see test_logical_types.py)
+    "config_rep_static_decimal_precision",
+    "config_rep_static_decimal_scale",
 }
 
 

@@ -1,0 +1,18 @@
+name: decimal_exceeds_precision
+fields:
+  - name: amount
+    logical_type:
+      name: decimal
+      args:
+        precision: 4
+        scale: 2
+    representations:
+      - pattern: "^(?P<value>-?[0-9]+\\.?[0-9]*)$"
+  - name: parts
+    logical_type:
+      name: decimal
+      args:
+        precision: 4
+        scale: 2
+    representations:
+      - pattern: "^(?P<integer_part>-?[0-9]+)\\.(?P<decimal_part>[0-9]+)$"

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"regexp"
 	"regexp/syntax"
 	"slices"
@@ -99,6 +100,34 @@ func BoolArg(val any, key string) (bool, error) {
 	}
 	return false, fmt.Errorf("'%s' must be true or false, got '%v' "+
 		"(map other spellings to true/false with a representation's static args)", key, val)
+}
+
+// DecimalArg parses a decimal value arg exactly and checks that it fits a
+// decimal(precision, scale): at most scale fractional digits and at most
+// precision-scale integer digits. The check is on the value, not the text,
+// so leading zeros and trailing fractional zeros (1.230 at scale 2) are fine.
+func DecimalArg(s string, precision, scale int) (*big.Rat, error) {
+	// ParseFloat gates the syntax (and rejects huge exponents) before the exact parse
+	if _, err := strconv.ParseFloat(s, 64); err != nil {
+		return nil, fmt.Errorf("'%s' is not a decimal", s)
+	}
+	r, ok := new(big.Rat).SetString(s)
+	if !ok {
+		return nil, fmt.Errorf("'%s' is not a decimal", s)
+	}
+	unscaled := new(big.Rat).Mul(r, new(big.Rat).SetInt(pow10(scale)))
+	if !unscaled.IsInt() {
+		return nil, fmt.Errorf("'%s' has more than %d fractional digits (scale %d)", s, scale, scale)
+	}
+	if new(big.Int).Abs(unscaled.Num()).Cmp(pow10(precision)) >= 0 {
+		return nil, fmt.Errorf("'%s' has more than %d integer digits (precision %d, scale %d)",
+			s, precision-scale, precision, scale)
+	}
+	return r, nil
+}
+
+func pow10(n int) *big.Int {
+	return new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(n)), nil)
 }
 
 // argSet is one combination of value args a logical type's converter accepts.
@@ -321,8 +350,12 @@ func checkStaticArg(typeConfig LogicalTypeConfig, name string, val any) error {
 			if err != nil {
 				return err
 			}
-			if _, err := strconv.ParseFloat(s, 64); err != nil {
-				return fmt.Errorf("'%s' is not a decimal", s)
+			if tc.Args.AsFloat {
+				if _, err := strconv.ParseFloat(s, 64); err != nil {
+					return fmt.Errorf("'%s' is not a decimal", s)
+				}
+			} else if _, err := DecimalArg(s, tc.Args.Precision, tc.Args.Scale); err != nil {
+				return err
 			}
 		}
 	case BooleanTypeConfig:

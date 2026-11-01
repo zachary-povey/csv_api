@@ -2,7 +2,6 @@ package parser
 
 import (
 	"fmt"
-	"math/big"
 	"regexp"
 	"strconv"
 	"strings"
@@ -68,7 +67,8 @@ func convert_boolean(args map[string]any) (bool, error) {
 	return config.BoolArg(value, "value")
 }
 
-func convert_decimal(args map[string]any, config config.DecimalTypeConfig) (any, error) {
+func convert_decimal(args map[string]any, decimalConfig config.DecimalTypeConfig) (any, error) {
+	typeArgs := decimalConfig.Args
 	// Check if we have a single value or separate integer/decimal parts
 	if value, exists := args["value"]; exists {
 		// Single value parameter set
@@ -77,17 +77,15 @@ func convert_decimal(args map[string]any, config config.DecimalTypeConfig) (any,
 			return 0, fmt.Errorf("'value' in args is not of type string")
 		}
 
-		floatValue, err := strconv.ParseFloat(string_value, 64)
-		if err != nil {
-			return 0, fmt.Errorf("failed to convert string to decimal: %w", err)
-		}
-
-		if config.Args.AsFloat {
+		if typeArgs.AsFloat {
+			floatValue, err := strconv.ParseFloat(string_value, 64)
+			if err != nil {
+				return 0, fmt.Errorf("failed to convert string to decimal: %w", err)
+			}
 			return floatValue, nil
-		} else {
-			// Convert to Avro decimal bytes representation
-			return decimalToRat(string_value)
 		}
+		// an exact value that fits precision and scale, so writers never round it
+		return config.DecimalArg(string_value, typeArgs.Precision, typeArgs.Scale)
 
 	} else if integer_part, has_int := args["integer_part"]; has_int {
 		// Separate integer_part and decimal_part parameter set
@@ -115,16 +113,14 @@ func convert_decimal(args map[string]any, config config.DecimalTypeConfig) (any,
 		// (12 and 05 is 12.05, not 12.5) and precise decimals never go through float64
 		resultStr := int_str + "." + dec_str
 
-		if config.Args.AsFloat {
+		if typeArgs.AsFloat {
 			floatValue, err := strconv.ParseFloat(resultStr, 64)
 			if err != nil {
 				return 0, fmt.Errorf("failed to convert string to decimal: %w", err)
 			}
 			return floatValue, nil
-		} else {
-			// Convert to Avro decimal bytes representation
-			return decimalToRat(resultStr)
 		}
+		return config.DecimalArg(resultStr, typeArgs.Precision, typeArgs.Scale)
 
 	} else {
 		return 0, fmt.Errorf("missing required arguments: need either 'value' or 'integer_part'+'decimal_part'")
@@ -359,14 +355,4 @@ func decimalPartToString(value any, key string) (string, error) {
 	default:
 		return "", fmt.Errorf("'%s' must be string or integer", key)
 	}
-}
-
-// decimalToRat converts a decimal string to a *big.Rat for goavro's decimal logical type.
-func decimalToRat(decimalStr string) (*big.Rat, error) {
-	rat := new(big.Rat)
-	_, ok := rat.SetString(decimalStr)
-	if !ok {
-		return nil, fmt.Errorf("invalid decimal string: %s", decimalStr)
-	}
-	return rat, nil
 }

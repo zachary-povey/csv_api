@@ -112,8 +112,9 @@ func columnValue(field config.FieldConfig, value any) (parquet.Value, error) {
 }
 
 // decimalBytes returns the unscaled value of r at scale as big-endian two's
-// complement bytes. Digits beyond scale are dropped the same way as in the
-// Avro output (goavro), so both formats hold the same value.
+// complement bytes. The converter only produces values that fit the field's
+// precision and scale (config.DecimalArg), so this is exact, as is goavro's
+// encoding of the same *big.Rat in the Avro output.
 func decimalBytes(r *big.Rat, scale int) []byte {
 	unscaled := new(big.Int).Mul(r.Num(), new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(scale)), nil))
 	unscaled.Div(unscaled, r.Denom())
