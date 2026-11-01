@@ -1,6 +1,7 @@
 import decimal
+import subprocess
 
-from tests.utils import run_fixture, run_validate_config
+from tests.utils import FIXTURES_DIR, run_fixture, run_validate_config
 
 DROP_DATA_FAILURES = ["--error-on-data-failures=false"]
 
@@ -122,3 +123,56 @@ def test_invalid_header_pattern_fails_config_load(build_path):
     ):
         assert result.returncode != 0, "Command should have failed"
         assert "field 'amount', header pattern '^Amount (GBP$'" in result.stderr
+
+
+# --- TASK-6: allow_extra_fields ---
+
+
+def test_extra_columns_rejected_when_not_allowed(build_path):
+    """TASK-6 AC#1: with allow_extra_fields: false, each column that maps to no
+    field is a file-level error naming the column (header text and column
+    number). They are all reported together with the other header errors."""
+    result = run_fixture(build_path, "extra_fields_rejected")
+    assert result.returncode != 0, "Command should have failed"
+    assert not result.output_exists
+    assert "file-level errors" in result.stderr
+    assert (
+        "header 'Comment' (column 1) matches no field (allow_extra_fields is false)"
+        in result.stderr
+    )
+    assert (
+        "header 'source' (column 4) matches no field (allow_extra_fields is false)"
+        in result.stderr
+    )
+    # mapped columns (exact name or header_patterns) are not reported
+    assert "'id' (column 2)" not in result.stderr
+    assert "'First Name' (column 3)" not in result.stderr
+    assert "missing some required fields: [email]" in result.stderr
+
+
+def test_extra_columns_ignored_by_default(build_path):
+    """TASK-6 AC#2: without allow_extra_fields, extra columns are ignored, as
+    before; allow_extra_fields: true behaves the same."""
+    for fixture in ("extra_fields_default", "extra_fields_allowed_explicit"):
+        result = run_fixture(build_path, fixture)
+        assert result.returncode == 0, f"{fixture}: command failed: {result.stderr}"
+        assert result.records == [
+            {"id": 1, "first_name": "Ann"},
+            {"id": 2, "first_name": "Bob"},
+        ]
+        assert [f["name"] for f in result.writer_schema["fields"]] == ["id", "first_name"]
+
+
+def test_allow_extra_fields_must_be_a_bool(build_path, tmp_path):
+    """TASK-6 AC#1: allow_extra_fields is a boolean; any other value fails the
+    config load."""
+    config = (FIXTURES_DIR / "extra_fields_default" / "config.yaml").read_text()
+    bad = tmp_path / "config.yaml"
+    bad.write_text(config.replace("# allow_extra_fields not set", "allow_extra_fields: sometimes #"))
+    result = subprocess.run(
+        [str(build_path), "validate_config", "--config-path", str(bad)],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "cannot unmarshal !!str `sometimes` into bool" in result.stderr

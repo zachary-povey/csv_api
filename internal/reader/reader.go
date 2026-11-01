@@ -125,7 +125,8 @@ func (r *Reader) ReadRows(channel chan Record, wg *sync.WaitGroup, errTracker *e
 // getFieldPositions finds each configured field's column, in config order (nil
 // for a missing optional field). It returns every header problem found: a
 // header matching more than one field, a field matching more than one header,
-// and missing required fields.
+// missing required fields and, with allow_extra_fields: false, columns that
+// match no field.
 func getFieldPositions(conf *config.Config, header []string) ([]*int, []error) {
 	errs := []error{}
 	matches := make([][]int, len(conf.Fields))
@@ -137,6 +138,10 @@ func getFieldPositions(conf *config.Config, header []string) ([]*int, []error) {
 				matches[i] = append(matches[i], position)
 				matchedFields = append(matchedFields, quoted(field.Name))
 			}
+		}
+		if len(matchedFields) == 0 && !conf.ExtraFieldsAllowed() {
+			errs = append(errs, fmt.Errorf("header %s matches no field (allow_extra_fields is false)",
+				describeColumn(header, position)))
 		}
 		if len(matchedFields) > 1 {
 			errs = append(errs, fmt.Errorf("header %s matches more than one field: %s",

@@ -158,7 +158,7 @@ fields:
 
 ### Fields
 
-`fields` is a list, and its order sets the order of fields in the output schema. Each field's `name` is its Avro field name (and, for an enum field, its Avro enum type name), so it must be a valid Avro name: it starts with a letter or underscore and contains only letters, digits and underscores (no dots). Field names must be unique. An invalid or duplicate name fails the config load, naming the field. If a csv header isn't a valid Avro name (say `first name`), give the field a valid name and match the header with `header_patterns` (below). A field is matched to a csv column by an exact header match on `name`, unless it has `header_patterns`. Columns in the file that are not in the config are ignored, and the order of columns doesn't matter.
+`fields` is a list, and its order sets the order of fields in the output schema. Each field's `name` is its Avro field name (and, for an enum field, its Avro enum type name), so it must be a valid Avro name: it starts with a letter or underscore and contains only letters, digits and underscores (no dots). Field names must be unique. An invalid or duplicate name fails the config load, naming the field. If a csv header isn't a valid Avro name (say `first name`), give the field a valid name and match the header with `header_patterns` (below). A field is matched to a csv column by an exact header match on `name`, unless it has `header_patterns`. The order of columns doesn't matter. Columns in the file that match no field are ignored by default; see `allow_extra_fields` below.
 
 `header_patterns` is a list of Go regular expressions for a field's column header, for producers whose header text varies (case, spacing, suffixes). A column whose header matches any of them is mapped to the field. When a field has `header_patterns`, they replace the match on `name`: the name is then only the field's name in the output, so it can be a clean Avro name while the header is something like `First Name `. Add an exact-name pattern (`^first_name$`) if the name should match too. Like representation patterns, header patterns are not anchored, so use `^` and `$` to match the whole header. An invalid pattern fails the config load, naming the field and pattern.
 
@@ -174,6 +174,15 @@ fields:
 ```
 
 Each field must match at most one column, and each column at most one field. A header that matches more than one field, or a field that matches more than one header (including a header name repeated in the file), is a file-level error naming the headers and fields involved. All problems with the header are reported together, even with fail-fast on. A required field that matches no header is a missing column (see below); the error lists the field's `header_patterns` if it has them. Errors about a value name its column by the header in the file, adding the field name when the two differ (e.g. `column 'First Name ' (field 'first_name')`), and the data failure report keeps the file's own header row.
+
+`allow_extra_fields` is an optional top-level setting (default `true`). By default, columns in the file that match no field are ignored: they never reach the output. Set `allow_extra_fields: false` to treat an unexpected column as a sign the producer changed the format: every column that matches no field is then a file-level error naming its header and column number (e.g. `header 'source' (column 4) matches no field`), reported together with any other header problems. This default is an exception to strict-by-default, since an ignored column can't change the output.
+
+```yaml
+name: com.example.orders
+allow_extra_fields: false # every column in the file must match a field
+fields:
+  ...
+```
 
 Fields are not nullable by default: every value must resolve to a value of the field's type. Set `nullable: true` on a field to allow nulls. Nulls only come from representations marked `is_null: true` (see [Representations](#representations)), so the producer's null placeholders (`-`, `N/A`, an empty string, ...) are spelled out in the config. An empty cell on a nullable field is not null unless an `is_null` representation matches it; otherwise it fails like any other unmatched value.
 
@@ -248,7 +257,6 @@ At run time the converters check that the args make a valid value (e.g. a real c
 
 These are intended but not built yet. Work is tracked as tasks with [Backlog.md](https://github.com/MrLesk/Backlog.md) in `backlog/` (run `backlog board` or `backlog task list`).
 
-- `allow_extra_fields`: option to reject columns not in the config (currently they are always ignored)
 - layered config files: a shared base config with per-producer overrides merged on top (`-c base.yaml -c partner.yaml`)
 - per-field error messages: an optional message in the config, shown when a field's values fail
 - streaming output to stdout, Parquet output, and a structured (json) `--error-report`

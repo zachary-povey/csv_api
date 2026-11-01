@@ -1,0 +1,15 @@
+name: extra_fields_allowed_explicit
+allow_extra_fields: true
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  - name: first_name
+    header_patterns:
+      - "(?i)^first ?name$"
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.+)$"

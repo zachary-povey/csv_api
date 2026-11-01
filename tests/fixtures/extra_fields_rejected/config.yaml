@@ -1,0 +1,20 @@
+name: extra_fields_rejected
+allow_extra_fields: false
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  - name: first_name
+    header_patterns:
+      - "(?i)^first ?name$"
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.+)$"
+  - name: email
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.+)$"

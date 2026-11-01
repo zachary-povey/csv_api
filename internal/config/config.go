@@ -14,6 +14,16 @@ import (
 type Config struct {
 	Name   string        `yaml:"name"`
 	Fields []FieldConfig `yaml:"fields" validate:"required,dive"`
+	// AllowExtraFields lets the file have columns that map to no field (they
+	// are ignored). Defaults to true; false makes each such column a
+	// file-level error. A pointer so an unset value can be told apart.
+	AllowExtraFields *bool `yaml:"allow_extra_fields"`
+}
+
+// ExtraFieldsAllowed reports whether columns that map to no field are
+// ignored (the default, unless the config sets allow_extra_fields: false).
+func (conf Config) ExtraFieldsAllowed() bool {
+	return conf.AllowExtraFields == nil || *conf.AllowExtraFields
 }
 
 type FieldConfig struct {
