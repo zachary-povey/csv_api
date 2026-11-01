@@ -10,10 +10,15 @@ const (
 	JSONErrorReport    = "json"
 )
 
-// Options control how the parse command treats errors. They are run-time
-// choices of the consumer, so they come from command line flags rather than
-// the config file.
+// Options control how the parse command writes output and treats errors.
+// They are run-time choices of the consumer, so they come from command line
+// flags rather than the config file.
 type Options struct {
+	// where the output is written; with Stream, empty means stdout
+	OutputPath string
+	// write output as rows are validated rather than all or nothing; a failed
+	// run leaves incomplete output
+	Stream bool
 	// if false, rows with invalid data values are dropped instead of failing the run
 	ErrorOnDataFailures bool
 	// stop at the first error rather than collecting errors
@@ -30,6 +35,9 @@ type Options struct {
 
 func (opts Options) Validate() error {
 	var errs []error
+	if opts.OutputPath == "" && !opts.Stream {
+		errs = append(errs, errors.New("--output-path is required (it can only be left out with --stream, to write to stdout)"))
+	}
 	if opts.MaxErrors < 0 {
 		errs = append(errs, errors.New("--max-errors must be a positive number"))
 	}
@@ -52,4 +60,12 @@ func (opts Options) Validate() error {
 		errs = append(errs, fmt.Errorf("unsupported --error-report '%s', supported values are '%s' and '%s'", opts.ErrorReport, ConsoleErrorReport, JSONErrorReport))
 	}
 	return errors.Join(errs...)
+}
+
+// OutputName describes where the output goes, for messages.
+func (opts Options) OutputName() string {
+	if opts.OutputPath == "" {
+		return "stdout"
+	}
+	return fmt.Sprintf("'%s'", opts.OutputPath)
 }

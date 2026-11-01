@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -50,10 +51,14 @@ func main() {
 					},
 
 					&cli.PathFlag{
-						Name:     "output-path",
-						Aliases:  []string{"o"},
-						Usage:    "output file path",
-						Required: true,
+						Name:    "output-path",
+						Aliases: []string{"o"},
+						Usage:   "output file path; with --stream it can be left out to write to stdout",
+					},
+
+					&cli.BoolFlag{
+						Name:  "stream",
+						Usage: "write output as rows are validated instead of only on success; a failed run leaves incomplete output, signalled by the non-zero exit code",
 					},
 
 					&cli.BoolFlag{
@@ -91,6 +96,8 @@ func main() {
 				},
 				Action: func(cCtx *cli.Context) error {
 					opts := options.Options{
+						OutputPath:          cCtx.Path("output-path"),
+						Stream:              cCtx.Bool("stream"),
 						ErrorOnDataFailures: cCtx.Bool("error-on-data-failures"),
 						FailFast:            cCtx.Bool("fail-fast"),
 						MaxErrors:           cCtx.Int("max-errors"),
@@ -103,7 +110,10 @@ func main() {
 					}
 					errorTracker := error_tracking.NewErrorTracker(opts.FailFast, opts.MaxErrors)
 					errorTracker.ErrorReport.DataFailuresDropped = !opts.ErrorOnDataFailures
-					err := parse(cCtx.Path("config-path"), cCtx.Path("input-path"), cCtx.Path("output-path"), opts, errorTracker)
+					err := parse(cCtx.Path("config-path"), cCtx.Path("input-path"), opts, errorTracker)
+					if err != nil && opts.Stream {
+						err = fmt.Errorf("%w\n%s", err, color.RedString("✗ --stream: the output written to %s is incomplete and must not be used", opts.OutputName()))
+					}
 					if opts.ErrorReport == options.JSONErrorReport {
 						if reportErr := writeJSONReport(opts.ErrorReportPath, errorTracker, err); reportErr != nil {
 							return errors.Join(err, reportErr)
@@ -209,7 +219,39 @@ func writeJSONReport(path string, errorTracker *error_tracking.ErrorTracker, run
 	return nil
 }
 
-func parse(configPath string, inputPath string, outputPath string, opts options.Options, errorTracker *error_tracking.ErrorTracker) error {
+// openOutput opens the avro output. Without --stream it is a temporary file,
+// moved into place by commit once the run has succeeded. With --stream it is
+// the output itself, written as rows are validated: stdout, or the output
+// path written in place; commit does nothing.
+func openOutput(opts options.Options) (output io.Writer, closeOutput func() error, commit func() error, tempPath string, err error) {
+	noop := func() error { return nil }
+	if opts.Stream && opts.OutputPath == "" {
+		// hide stdout's *os.File type from goavro, which would otherwise try to
+		// append to an existing OCF when stdout is redirected to a non-empty
+		// file. Writes go straight through, unbuffered.
+		return struct{ io.Writer }{os.Stdout}, noop, noop, "", nil
+	}
+	if opts.Stream {
+		file, err := os.Create(opts.OutputPath)
+		if err != nil {
+			return nil, nil, nil, "", fmt.Errorf("error creating output file '%s': %w", opts.OutputPath, err)
+		}
+		return file, file.Close, noop, "", nil
+	}
+	file, err := tempFileFor(opts.OutputPath)
+	if err != nil {
+		return nil, nil, nil, "", fmt.Errorf("error creating output file '%s': %w", opts.OutputPath, err)
+	}
+	commit = func() error {
+		if err := os.Rename(file.Name(), opts.OutputPath); err != nil {
+			return fmt.Errorf("error writing output file: %w", err)
+		}
+		return nil
+	}
+	return file, file.Close, commit, file.Name(), nil
+}
+
+func parse(configPath string, inputPath string, opts options.Options, errorTracker *error_tracking.ErrorTracker) error {
 	config, err := config.LoadConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to read config: %w", err)
@@ -229,7 +271,8 @@ func parse(configPath string, inputPath string, outputPath string, opts options.
 	}
 
 	// outputs are written to temporary files and only moved into place if the
-	// run succeeds, so a failed run never leaves output behind
+	// run succeeds, so a failed run never leaves output behind (except the
+	// avro output with --stream, see openOutput)
 	tempPaths := []string{}
 	committed := false
 	defer func() {
@@ -260,12 +303,13 @@ func parse(configPath string, inputPath string, outputPath string, opts options.
 		return fmt.Errorf("invalid config: %w", err)
 	}
 
-	outputFile, err := tempFileFor(outputPath)
+	output, closeOutput, commitOutput, outputTempPath, err := openOutput(opts)
 	if err != nil {
-		return fmt.Errorf("error creating output file '%s': %w", outputPath, err)
+		return err
 	}
-	outputFile.Close()
-	tempPaths = append(tempPaths, outputFile.Name())
+	if outputTempPath != "" {
+		tempPaths = append(tempPaths, outputTempPath)
+	}
 
 	var waitGroup sync.WaitGroup
 	waitGroup.Add(3)
@@ -274,9 +318,12 @@ func parse(configPath string, inputPath string, outputPath string, opts options.
 
 	go dataReader.ReadRows(inputChan, &waitGroup, errorTracker)
 	go dataParser.ParseData(inputChan, outputChan, &waitGroup, errorTracker)
-	go avro_writer.WriteFile(outputFile.Name(), config, outputChan, &waitGroup, errorTracker)
+	go avro_writer.Write(output, config, outputChan, &waitGroup, errorTracker)
 
 	waitGroup.Wait()
+	if err := closeOutput(); err != nil {
+		errorTracker.AddExecutionError(fmt.Errorf("error writing output file: %w", err))
+	}
 	errorTracker.ErrorReport.DroppedRows = dataParser.DroppedRows
 
 	if dataFailureWriter != nil {
@@ -292,8 +339,8 @@ func parse(configPath string, inputPath string, outputPath string, opts options.
 		return errors.New(errorTracker.ErrorReport.ConsoleFormat())
 	}
 
-	if err := os.Rename(outputFile.Name(), outputPath); err != nil {
-		return fmt.Errorf("error writing output file: %w", err)
+	if err := commitOutput(); err != nil {
+		return err
 	}
 	if dataFailureFile != nil {
 		if err := os.Rename(dataFailureFile.Name(), opts.DataFailureReport); err != nil {

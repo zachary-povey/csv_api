@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build and Run Commands
 
 - **Build**: `./scripts/build.sh` (creates binary at `./build/csv-api`)
-- **Run**: `./build/csv-api parse --config-path <config> --input-path <csv> --output-path <output>` (short flags: `-c`, `-i`, `-o`)
+- **Run**: `./build/csv-api parse --config-path <config> --input-path <csv> --output-path <output>` (short flags: `-c`, `-i`, `-o`); add `--stream` and leave out `-o` to stream Avro to stdout
 - **Validate config**: `./build/csv-api validate_config --config-path <config>` (`--print-merged` also prints the merged config as YAML to stdout)
 - **Test**: `python3 -m pytest tests` (builds the binary first; set `BUILD_PATH` to test an existing binary; needs `pip install -r tests/requirements.txt`)
 
@@ -27,7 +27,7 @@ CSV → Reader Channel → Parser Channel → Avro Writer → Avro File
 
 - **Config System** (`internal/config`) - YAML-based field definitions with logical types (string, integer, decimal, enum, timestamp, date, time) and regex validation patterns
 - **Error Tracking** (`internal/error_tracking`) - Centralized error collection with file/row/cell level reporting. Closes `KillCh` to stop the pipeline (execution errors, fail-fast, max-errors); the reader stops on it and the parser keeps draining its input so nothing blocks
-- **Options** (`internal/options`) - Error handling flags for `parse` (`--error-on-data-failures`, `--fail-fast`, `--max-errors`, `--data-failure-report`, `--error-report` console|json, `--error-report-path`), documented in README.md
+- **Options** (`internal/options`) - Output and error handling flags for `parse` (`--stream`, `--error-on-data-failures`, `--fail-fast`, `--max-errors`, `--data-failure-report`, `--error-report` console|json, `--error-report-path`), documented in README.md
 - **Type System** - Each field has representations (regex patterns) that map to logical types with optional arguments
 
 ### Configuration Format
@@ -44,7 +44,7 @@ A config has a required top-level `name` (a valid Avro name, used as the output 
 
 Layered configs (`internal/config/layered.go`): a config may start with `extends: <path>` (relative to that file; chains allowed, cycles and missing files fail naming the files). The root (no `extends`) defines the schema. Extending files are strictly decoded into `overrideConfig`, which only holds input-side settings (`allow_extra_fields`, and per field matched by `name`: `representations` / `prepend_representations` / `append_representations`, `header_patterns`, `error_message`, `required`); schema-side keys (`name`, `nullable`, `logical_type`) and unknown fields fail naming the file. Files merge root to leaf, then `Config.check()` runs every load-time check on the merged config. A new input-side field setting must be added to `fieldOverride` and `applyOverride` (and the README table) to be overridable. `validate_config --print-merged` prints the merged `Config` as YAML (keep `omitempty` tags so it stays a clean root config).
 
-The pipeline processes data concurrently using goroutines and channels. The reader checks the header synchronously before the goroutines start. Output (and the optional data failure report) is written to temporary files that are only renamed into place when the run succeeds.
+The pipeline processes data concurrently using goroutines and channels. The reader checks the header synchronously before the goroutines start. Output (and the optional data failure report) is written to temporary files that are only renamed into place when the run succeeds. With `--stream` the Avro output instead goes straight to stdout (no `--output-path`) or to the output path as rows are validated, and is incomplete on failure (`openOutput` in `main.go`); side reports stay atomic. In `parse`, stdout carries only output data: everything else goes to stderr.
 
 ## Adding New Logical Types
 

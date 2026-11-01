@@ -69,7 +69,23 @@ Validate a csv file against a config and convert it to Avro:
 ./build/csv-api parse -c config.yaml -i data.csv -o data.avro
 ```
 
-The command exits non-zero and prints an error report if the file does not match the config. A failed run never leaves an output file behind.
+The command exits non-zero and prints an error report if the file does not match the config. A failed run never leaves an output file behind (unless `--stream` is used, see below).
+
+#### Streaming output
+
+By default the output is all or nothing: it is written to a temporary file and only moved into place when the whole file has passed validation. Add `--stream` to write the output as rows are validated instead, so the tool can sit in a shell pipeline. Without `--output-path`, the output goes to stdout:
+
+```sh
+./build/csv-api parse -c config.yaml -i data.csv --stream | consumer
+```
+
+The trade-off: rows are emitted before the rest of the file has been checked, so when a run fails the output written so far is incomplete (it may be empty, or stop part way through). The run still exits non-zero and stderr ends with a line saying the output is incomplete. **Consumers must check the exit code** and discard the output of a failed run. (In a shell pipeline, use `set -o pipefail` or check `PIPESTATUS`, since a pipeline's exit status is otherwise the last command's.)
+
+- The Avro header is always written first, so stdout is valid Avro even when no rows pass.
+- Stdout carries only the Avro output. Errors, warnings and the incomplete-output message go to stderr.
+- `--stream` with `--output-path` writes that file in place as rows are validated (no temporary file), so a failed run leaves the incomplete file behind. To stream to stdout, leave out `--output-path` (`-o -` is not treated as stdout).
+- Without `--stream`, `--output-path` is required.
+- The data failure report and the JSON error report are still written to a temporary file and moved into place, as without `--stream`.
 
 Check a config file on its own:
 
@@ -377,4 +393,4 @@ All the usual checks run on the merged config. For example, an `is_null` represe
 
 These are intended but not built yet. Work is tracked as tasks with [Backlog.md](https://github.com/MrLesk/Backlog.md) in `backlog/` (run `backlog board` or `backlog task list`).
 
-- streaming output to stdout and Parquet output
+- Parquet output

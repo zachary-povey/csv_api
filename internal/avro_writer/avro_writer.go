@@ -2,7 +2,7 @@ package avro_writer
 
 import (
 	"fmt"
-	"os"
+	"io"
 	"strings"
 	"sync"
 	"text/template"
@@ -144,17 +144,15 @@ func generateSchema(config *config.Config) string {
 	return result
 }
 
-func WriteFile(filepath string, config *config.Config, channel chan map[string]any, wg *sync.WaitGroup, errTracker *error_tracking.ErrorTracker) {
+// Write writes the rows from channel to output as an Avro object container
+// file. The header is written straight away, so the output is valid Avro
+// even if no rows arrive, and each row is written as its own block as soon
+// as it arrives (output is not buffered), so streamed output reaches its
+// reader as rows are validated.
+func Write(output io.Writer, config *config.Config, channel chan map[string]any, wg *sync.WaitGroup, errTracker *error_tracking.ErrorTracker) {
 	defer wg.Done()
 
 	avroSchema := generateSchema(config)
-
-	output, err := os.Create(filepath)
-	if err != nil {
-		errTracker.AddExecutionError(fmt.Errorf("error opening output file: %s", err))
-		return
-	}
-	defer output.Close()
 
 	writer, writerErr := goavro.NewOCFWriter(
 		goavro.OCFConfig{
