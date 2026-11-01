@@ -2,7 +2,6 @@
 
 import datetime
 import json
-import subprocess
 from decimal import Decimal
 from pathlib import Path
 
@@ -208,24 +207,6 @@ def test_failed_parquet_run_leaves_no_output(build_path, tmp_path):
     assert proc.returncode != 0
     assert "not-a-number" in proc.stderr
     assert list(tmp_path.iterdir()) == []
-
-
-def test_stream_is_rejected_with_parquet(build_path, tmp_path):
-    """TASK-13 AC#2: --stream can't be used with Parquet, whose footer is only
-    written at the end; the run is rejected before anything is written."""
-    for args in (["--stream"], ["--stream", "-o", str(tmp_path / "output.parquet")]):
-        cmd = [
-            str(build_path), "parse",
-            "-c", str(ALL_TYPES / "config.yaml"),
-            "-i", str(ALL_TYPES / "data.csv"),
-            "--output-format", "parquet",
-            *args,
-        ]
-        proc = subprocess.run(cmd, capture_output=True, timeout=60)
-        assert proc.returncode != 0
-        assert b"--stream can't be used with --output-format=parquet" in proc.stderr
-        assert proc.stdout == b""
-        assert list(tmp_path.iterdir()) == []
 
 
 def test_unknown_output_format_is_rejected(build_path, tmp_path):

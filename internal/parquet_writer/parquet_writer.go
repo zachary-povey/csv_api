@@ -1,6 +1,7 @@
 package parquet_writer
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"math/big"
@@ -12,8 +13,12 @@ import (
 )
 
 // rowsPerRowGroup bounds how many rows are buffered in memory before a row
-// group is written out.
-const rowsPerRowGroup = 100_000
+// group is written out. A variable only so tests can use small row groups.
+var rowsPerRowGroup = 100_000
+
+// writeBufferSize is the size of the buffer between the Parquet writer and
+// the output; it is flushed after each row group.
+const writeBufferSize = 64 * 1024
 
 // orderedGroup is a group node whose fields keep the config's order
 // (parquet.Group sorts its fields by name).
@@ -138,14 +143,22 @@ func withSignByte(b []byte) []byte {
 	return b
 }
 
-// Write writes the rows from channel to output as a Parquet file. Parquet's
-// footer (holding the schema and row group index) is only written once the
-// channel is closed, so unlike the Avro writer the output can't be streamed.
+// Write writes the rows from channel to output as a Parquet file. Each row
+// group is written to output as soon as it is complete, so with --stream the
+// output is written as rows are validated (in bounded memory), though a
+// Parquet file is only readable once its footer (holding the schema and row
+// group index) is written at the end. If the run has failed by the time the
+// channel is closed, no footer is written, so incomplete output (with
+// --stream) can't be read as Parquet. output need not be seekable.
 func Write(output io.Writer, conf *config.Config, channel chan map[string]any, wg *sync.WaitGroup, errTracker *error_tracking.ErrorTracker) {
 	defer wg.Done()
 
-	writer := parquet.NewWriter(output, generateSchema(conf), parquet.MaxRowsPerRowGroup(rowsPerRowGroup))
+	// parquet-go's own buffer is turned off so that flushing ours after each
+	// row group gets the whole row group to the output
+	buffered := bufio.NewWriterSize(output, writeBufferSize)
+	writer := parquet.NewWriter(buffered, generateSchema(conf), parquet.WriteBufferSize(0))
 
+	rows := 0
 	for row := range channel {
 		values := make(parquet.Row, len(conf.Fields))
 		for i, field := range conf.Fields {
@@ -164,8 +177,27 @@ func Write(output io.Writer, conf *config.Config, channel chan map[string]any, w
 			errTracker.AddExecutionError(fmt.Errorf("error writing parquet record: %s", err))
 			return
 		}
+		rows++
+		if rows%rowsPerRowGroup == 0 {
+			err := writer.Flush()
+			if err == nil {
+				err = buffered.Flush()
+			}
+			if err != nil {
+				errTracker.AddExecutionError(fmt.Errorf("error writing parquet row group: %s", err))
+				return
+			}
+		}
 	}
-	if err := writer.Close(); err != nil {
+	// every pipeline error is recorded before the parser closes the channel
+	if errTracker.Failed() {
+		return
+	}
+	err := writer.Close()
+	if err == nil {
+		err = buffered.Flush()
+	}
+	if err != nil {
 		errTracker.AddExecutionError(fmt.Errorf("error writing parquet file: %s", err))
 	}
 }

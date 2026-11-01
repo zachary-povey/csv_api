@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build and Run Commands
 
 - **Build**: `./scripts/build.sh` (creates binary at `./build/csv-api`)
-- **Run**: `./build/csv-api parse --config-path <config> --input-path <csv> --output-path <output>` (short flags: `-c`, `-i`, `-o`); add `--stream` and leave out `-o` to stream Avro to stdout
+- **Run**: `./build/csv-api parse --config-path <config> --input-path <csv> --output-path <output>` (short flags: `-c`, `-i`, `-o`); add `--stream` and leave out `-o` to stream the output (Avro or Parquet) to stdout
 - **Validate config**: `./build/csv-api validate_config --config-path <config>` (`--print-merged` also prints the merged config as YAML to stdout)
 - **Test**: `python3 -m pytest tests` (builds the binary first; set `BUILD_PATH` to test an existing binary; needs `pip install -r tests/requirements.txt`)
 
@@ -15,7 +15,7 @@ This is a CSV validation and Avro/Parquet conversion tool with a concurrent pipe
 
 1. **Reader** (`internal/reader`) - Reads CSV files and validates headers against config
 2. **Parser** (`internal/parser`) - Validates data using regex patterns and converts types. Rows are dispatched in batches to one worker per GOMAXPROCS (each with its own compiled representations, since a Parser is single-goroutine); `ParseData` reassembles results in input order and does all side effects (error tracking, dropping rows, data failure report) in that single in-order stage
-3. **Avro Writer** (`internal/avro_writer`) or **Parquet Writer** (`internal/parquet_writer`) - Generates the output schema and writes output. Both have the same `Write(io.Writer, config, channel, wg, errTracker)` signature; `main.go` picks one from `--output-format` (default `avro`). Parquet uses `github.com/parquet-go/parquet-go`, keeps config field order, and can't be used with `--stream` (its footer is written at the end)
+3. **Avro Writer** (`internal/avro_writer`) or **Parquet Writer** (`internal/parquet_writer`) - Generates the output schema and writes output. Both have a `Write(io.Writer, config, channel, wg, errTracker, ...)` function (the Avro one also takes `flushWhenIdle`, set by `--stream`); `main.go` picks one from `--output-format` (default `avro`). Parquet uses `github.com/parquet-go/parquet-go`, keeps config field order, and writes each row group (`rowsPerRowGroup`, 100k rows; a package var only so tests can shrink it) to the output as soon as it is complete. Its footer is written at the end, and not at all when the run has failed (`ErrorTracker.Failed()` once the channel closes), so a failed `--stream` run leaves output Parquet readers reject
 
 The main processing flow uses Go channels for concurrent execution:
 
@@ -45,7 +45,7 @@ A config has a required top-level `name` (a valid Avro name, used as the output 
 
 Layered configs (`internal/config/layered.go`): a config may start with `extends: <path>` (relative to that file; chains allowed, cycles and missing files fail naming the files). The root (no `extends`) defines the schema. Extending files are strictly decoded into `overrideConfig`, which only holds input-side settings (`allow_extra_fields`, `empty_is_null`, `quoted_empty_is_null`, and per field matched by `name`: `representations` / `prepend_representations` / `append_representations`, `header_patterns`, `error_message`, `required`, `empty_is_null`, `quoted_empty_is_null`); schema-side keys (`name`, `nullable`, `logical_type`) and unknown fields fail naming the file. Files merge root to leaf, then `Config.check()` runs every load-time check on the merged config. A new input-side field setting must be added to `fieldOverride` and `applyOverride` (and the README table) to be overridable. `validate_config --print-merged` prints the merged `Config` as YAML (keep `omitempty` tags so it stays a clean root config).
 
-The pipeline processes data concurrently using goroutines and channels. The reader checks the header synchronously before the goroutines start. Output (and the optional data failure report) is written to temporary files that are only renamed into place when the run succeeds. With `--stream` the Avro output instead goes straight to stdout (no `--output-path`) or to the output path as rows are validated, and is incomplete on failure (`openOutput` in `main.go`); side reports stay atomic. In `parse`, stdout carries only output data: everything else goes to stderr.
+The pipeline processes data concurrently using goroutines and channels. The reader checks the header synchronously before the goroutines start. Output (and the optional data failure report) is written to temporary files that are only renamed into place when the run succeeds. With `--stream` the output (Avro or Parquet) instead goes straight to stdout (no `--output-path`) or to the output path as rows are validated, and is incomplete on failure (`openOutput` in `main.go`); side reports stay atomic. In `parse`, stdout carries only output data: everything else goes to stderr.
 
 ## Adding New Logical Types
 

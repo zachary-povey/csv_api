@@ -114,6 +114,14 @@ func (tracker *ErrorTracker) Killed() bool {
 	}
 }
 
+// Failed reports whether any execution or report error has been recorded,
+// i.e. whether the run will fail (whether or not processing was stopped).
+func (tracker *ErrorTracker) Failed() bool {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	return len(tracker.ExecutionErrors) > 0 || tracker.ErrorReport.ContainsErrors()
+}
+
 func (tracker *ErrorTracker) AddExecutionError(err error) {
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()

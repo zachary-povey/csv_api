@@ -83,7 +83,7 @@ The output is Avro by default. Add `--output-format parquet` to write Parquet in
 | --- | --- | --- |
 | `--output-format` | `avro` | `avro` (an Avro object container file) or `parquet`. Both hold the same values with equivalent types, see [Logical types and type args](#logical-types-and-type-args). |
 
-The format is always chosen with the flag, never from the output file's extension. Like the error handling flags, it is a choice for whoever runs the tool, so the same config can produce either format. A Parquet file is written with one column per config field, in config order, and the config's `name` as the schema name.
+The format is always chosen with the flag, never from the output file's extension. Like the error handling flags, it is a choice for whoever runs the tool, so the same config can produce either format. A Parquet file is written with one column per config field, in config order, and the config's `name` as the schema name. Rows are written in row groups of up to 100,000 rows. Parquet output can be streamed with `--stream` too, see [Streaming output](#streaming-output).
 
 #### Streaming output
 
@@ -95,13 +95,20 @@ By default the output is all or nothing: it is written to a temporary file and o
 
 The trade-off: rows are emitted before the rest of the file has been checked, so when a run fails the output written so far is incomplete (it may be empty, or stop part way through). The run still exits non-zero and stderr ends with a line saying the output is incomplete. **Consumers must check the exit code** and discard the output of a failed run. (In a shell pipeline, use `set -o pipefail` or check `PIPESTATUS`, since a pipeline's exit status is otherwise the last command's.)
 
-- `--stream` only works with Avro output. `--stream --output-format parquet` is rejected before the run starts, since a Parquet file can't be read until its footer is written at the very end.
 - The Avro header is always written first, so stdout is valid Avro even when no rows pass.
 - Rows are written in Avro blocks of up to 100 rows, but with `--stream` a block is written as soon as no further validated row is ready, so a row never waits for later input to arrive.
-- Stdout carries only the Avro output. Errors, warnings, the incomplete-output message, and help and usage errors from the command line go to stderr.
+- Stdout carries only the output (Avro or Parquet). Errors, warnings, the incomplete-output message, and help and usage errors from the command line go to stderr.
 - `--stream` with `--output-path` writes that file in place as rows are validated (no temporary file), so a failed run leaves the incomplete file behind. To stream to stdout, leave out `--output-path` (`-o -` is not treated as stdout).
 - Without `--stream`, `--output-path` is required.
 - The data failure report and the JSON error report are still written to a temporary file and moved into place, as without `--stream`.
+
+`--stream` also works with `--output-format parquet`, for example to pipe the output straight to another tool:
+
+```sh
+./build/csv-api parse -c config.yaml -i data.csv --stream --output-format parquet | aws s3 cp - s3://bucket/data.parquet
+```
+
+A Parquet file is only readable once it is complete: its footer, holding the schema and the index of the row groups, is written at the very end. So unlike Avro, streamed Parquet gives the consumer no early access to rows; what `--stream` gives is a pipe-friendly output (no seeking, no temporary file) and bounded memory. Each row group of up to 100,000 rows is written to the output as soon as it is complete, and the footer once the whole file has passed. When a run fails, no footer is written, so the incomplete output is rejected by Parquet readers (it may also be empty, if the run failed before the first row group was complete). The exit code is still the signal to check.
 
 Check a config file on its own:
 

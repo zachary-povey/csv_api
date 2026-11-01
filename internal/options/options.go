@@ -46,9 +46,6 @@ func (opts Options) Validate() error {
 	switch opts.OutputFormat {
 	case AvroOutputFormat:
 	case ParquetOutputFormat:
-		if opts.Stream {
-			errs = append(errs, errors.New("--stream can't be used with --output-format=parquet: a Parquet file can only be read once its footer is written at the end, so it can't be streamed"))
-		}
 	default:
 		errs = append(errs, fmt.Errorf("unsupported --output-format '%s', supported values are '%s' and '%s'", opts.OutputFormat, AvroOutputFormat, ParquetOutputFormat))
 	}
