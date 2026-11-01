@@ -144,12 +144,21 @@ func generateSchema(config *config.Config) string {
 	return result
 }
 
+// maxBlockRows is the most rows written in one Avro block. The per-block
+// overhead (counts and a 16-byte sync marker) is already negligible at 100
+// rows; larger blocks measured slower, as the parser stalls on a full
+// channel while the writer encodes a big block.
+const maxBlockRows = 100
+
 // Write writes the rows from channel to output as an Avro object container
 // file. The header is written straight away, so the output is valid Avro
-// even if no rows arrive, and each row is written as its own block as soon
-// as it arrives (output is not buffered), so streamed output reaches its
-// reader as rows are validated.
-func Write(output io.Writer, config *config.Config, channel chan map[string]any, wg *sync.WaitGroup, errTracker *error_tracking.ErrorTracker) {
+// even if no rows arrive. Rows are written in blocks of up to maxBlockRows
+// (goavro writes each block with a single Write call). With flushWhenIdle
+// (--stream), a block is also written as soon as no further row is ready, so
+// a row never waits for later input and streamed output reaches its reader
+// as rows are validated. Without it, blocks are only written when full or at
+// the end, so they stay large even when the writer outpaces the parser.
+func Write(output io.Writer, config *config.Config, channel chan map[string]any, wg *sync.WaitGroup, errTracker *error_tracking.ErrorTracker, flushWhenIdle bool) {
 	defer wg.Done()
 
 	avroSchema := generateSchema(config)
@@ -166,13 +175,41 @@ func Write(output io.Writer, config *config.Config, channel chan map[string]any,
 	}
 
 	branches := nullableBranches(config)
-	for row := range channel {
+	wrapNullable := func(row map[string]any) map[string]any {
 		for name, branch := range branches {
 			if value := row[name]; value != nil {
 				row[name] = map[string]any{branch: value}
 			}
 		}
-		if err := writer.Append([]map[string]interface{}{row}); err != nil {
+		return row
+	}
+
+	// next returns the next row, or ok=false once the channel is closed or,
+	// with flushWhenIdle, when no row is ready
+	next := func() (map[string]any, bool) {
+		if !flushWhenIdle {
+			row, ok := <-channel
+			return row, ok
+		}
+		select {
+		case row, ok := <-channel:
+			return row, ok
+		default:
+			return nil, false
+		}
+	}
+
+	block := make([]map[string]any, 0, maxBlockRows)
+	for row := range channel {
+		block = append(block[:0], wrapNullable(row))
+		for len(block) < maxBlockRows {
+			row, ok := next()
+			if !ok {
+				break
+			}
+			block = append(block, wrapNullable(row))
+		}
+		if err := writer.Append(block); err != nil {
 			errTracker.AddExecutionError(fmt.Errorf("error writing avro record: %s", err))
 			return
 		}

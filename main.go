@@ -330,11 +330,13 @@ func parse(configPath string, inputPath string, opts options.Options, errorTrack
 
 	go dataReader.ReadRows(inputChan, &waitGroup, errorTracker)
 	go dataParser.ParseData(inputChan, outputChan, &waitGroup, errorTracker)
-	writeOutput := avro_writer.Write
 	if opts.OutputFormat == options.ParquetOutputFormat {
-		writeOutput = parquet_writer.Write
+		go parquet_writer.Write(output, config, outputChan, &waitGroup, errorTracker)
+	} else {
+		// with --stream, each block is written as soon as the writer would
+		// wait for input, so rows reach the reader as they are validated
+		go avro_writer.Write(output, config, outputChan, &waitGroup, errorTracker, opts.Stream)
 	}
-	go writeOutput(output, config, outputChan, &waitGroup, errorTracker)
 
 	waitGroup.Wait()
 	if err := closeOutput(); err != nil {

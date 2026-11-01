@@ -62,7 +62,8 @@ def test_stream_writes_header_when_no_rows(build_path, tmp_path):
 def test_stream_emits_rows_before_the_input_is_finished(build_path, tmp_path):
     """TASK-14 AC#1: rows are written to stdout as they are processed. The
     input is a pipe that is held open: records must be readable from stdout
-    before the rest of the input (ending in an invalid row) is written."""
+    before the rest of the input (ending in an invalid row) is written.
+    Also TASK-21 AC#2: batching rows into blocks must not hold a row back."""
     fifo = tmp_path / "data.csv"
     os.mkfifo(fifo)
     proc = subprocess.Popen(
