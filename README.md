@@ -117,7 +117,7 @@ A config lists the fields expected in the file. Each field has a logical type (w
 ```yaml
 name: com.example.orders # the Avro schema name (required)
 fields:
-  - name: some_date # must match the csv column header exactly
+  - name: some_date # matched to the csv column with this exact header
     logical_type:
       name: date
     representations:
@@ -158,7 +158,22 @@ fields:
 
 ### Fields
 
-`fields` is a list, and its order sets the order of fields in the output schema. A field is matched to a csv column by an exact header match on `name`. Columns in the file that are not in the config are ignored.
+`fields` is a list, and its order sets the order of fields in the output schema. A field is matched to a csv column by an exact header match on `name`, unless it has `header_patterns`. Columns in the file that are not in the config are ignored, and the order of columns doesn't matter.
+
+`header_patterns` is a list of Go regular expressions for a field's column header, for producers whose header text varies (case, spacing, suffixes). A column whose header matches any of them is mapped to the field. When a field has `header_patterns`, they replace the match on `name`: the name is then only the field's name in the output, so it can be a clean Avro name while the header is something like `First Name `. Add an exact-name pattern (`^first_name$`) if the name should match too. Like representation patterns, header patterns are not anchored, so use `^` and `$` to match the whole header. An invalid pattern fails the config load, naming the field and pattern.
+
+```yaml
+  - name: first_name
+    header_patterns:
+      - "(?i)^\\s*first[ _]?name\\s*$" # "First Name", "first_name ", "FIRSTNAME", ...
+      - "^Given Name$"
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.+)$"
+```
+
+Each field must match at most one column, and each column at most one field. A header that matches more than one field, or a field that matches more than one header (including a header name repeated in the file), is a file-level error naming the headers and fields involved. All problems with the header are reported together, even with fail-fast on. A required field that matches no header is a missing column (see below); the error lists the field's `header_patterns` if it has them. Errors about a value name its column by the header in the file, adding the field name when the two differ (e.g. `column 'First Name ' (field 'first_name')`), and the data failure report keeps the file's own header row.
 
 Fields are not nullable by default: every value must resolve to a value of the field's type. Set `nullable: true` on a field to allow nulls. Nulls only come from representations marked `is_null: true` (see [Representations](#representations)), so the producer's null placeholders (`-`, `N/A`, an empty string, ...) are spelled out in the config. An empty cell on a nullable field is not null unless an `is_null` representation matches it; otherwise it fails like any other unmatched value.
 
@@ -233,7 +248,6 @@ At run time the converters check that the args make a valid value (e.g. a real c
 
 These are intended but not built yet. Work is tracked as tasks with [Backlog.md](https://github.com/MrLesk/Backlog.md) in `backlog/` (run `backlog board` or `backlog task list`).
 
-- `header_patterns`: regex matching of csv headers to fields, instead of an exact match on `name`
 - `allow_extra_fields`: option to reject columns not in the config (currently they are always ignored)
 - layered config files: a shared base config with per-producer overrides merged on top (`-c base.yaml -c partner.yaml`)
 - per-field error messages: an optional message in the config, shown when a field's values fail

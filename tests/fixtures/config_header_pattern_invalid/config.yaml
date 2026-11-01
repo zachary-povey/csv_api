@@ -1,0 +1,10 @@
+name: config_header_pattern_invalid
+fields:
+  - name: amount
+    header_patterns:
+      - "^Amount$"
+      - "^Amount (GBP$"
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"

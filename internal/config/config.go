@@ -27,6 +27,12 @@ type FieldConfig struct {
 	// missing optional (required: false) column is null for every row, so
 	// only nullable fields may be optional.
 	Required *bool `yaml:"required"`
+	// HeaderPatterns are regexes (not anchored) matched against the csv
+	// header to find the field's column. When set, they replace the exact
+	// match on Name.
+	HeaderPatterns []string `yaml:"header_patterns"`
+
+	headerRegexes []*regexp.Regexp
 
 	RawLogicalTypeConfig map[string]any `yaml:"logical_type" validate:"required"`
 }
@@ -199,6 +205,11 @@ func LoadConfig(filename string) (*Config, error) {
 		}
 	}
 
+	err = config.compileHeaderPatterns()
+	if err != nil {
+		return nil, err
+	}
+
 	err = config.checkRequired()
 	if err != nil {
 		return nil, err
@@ -252,13 +263,36 @@ func (conf Config) checkEnumNames() error {
 	return nil
 }
 
-func (conf Config) AllFieldNames() []string {
-	fieldNames := []string{}
-	for _, field := range conf.Fields {
-		fieldNames = append(fieldNames, field.Name)
+// compileHeaderPatterns compiles every field's header_patterns, so an invalid
+// pattern fails the config load rather than the run.
+func (conf *Config) compileHeaderPatterns() error {
+	for i := range conf.Fields {
+		field := &conf.Fields[i]
+		field.headerRegexes = nil
+		for _, pattern := range field.HeaderPatterns {
+			rgx, err := regexp.Compile(pattern)
+			if err != nil {
+				return fmt.Errorf("field '%s', header pattern '%s': %w", field.Name, pattern, err)
+			}
+			field.headerRegexes = append(field.headerRegexes, rgx)
+		}
 	}
+	return nil
+}
 
-	return fieldNames
+// MatchesHeader reports whether a csv column header belongs to the field: it
+// matches any of the field's header_patterns or, when the field has none, it
+// is exactly the field's name.
+func (fc FieldConfig) MatchesHeader(header string) bool {
+	if len(fc.HeaderPatterns) == 0 {
+		return header == fc.Name
+	}
+	for _, rgx := range fc.headerRegexes {
+		if rgx.MatchString(header) {
+			return true
+		}
+	}
+	return false
 }
 
 // IsRequired reports whether the field's column must be in the file
@@ -277,23 +311,4 @@ func (conf Config) checkRequired() error {
 		}
 	}
 	return nil
-}
-
-func (conf Config) RequiredFieldNames() []string {
-	fieldNames := []string{}
-	for _, field := range conf.Fields {
-		if field.IsRequired() {
-			fieldNames = append(fieldNames, field.Name)
-		}
-	}
-
-	return fieldNames
-}
-
-func (conf Config) FieldMap() map[string]FieldConfig {
-	fieldMap := map[string]FieldConfig{}
-	for _, field := range conf.Fields {
-		fieldMap[field.Name] = field
-	}
-	return fieldMap
 }

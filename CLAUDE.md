@@ -38,6 +38,7 @@ A config has a required top-level `name` (a valid Avro name, used as the output 
 - `logical_type`: Type definition (name + optional args for decimals/enums)
 - `nullable`: optional, default false; makes the Avro type a union with null
 - `required`: optional, default true; `required: false` lets the column be missing from the file (the field is then null in every row); only allowed on nullable fields
+- `header_patterns`: Optional array of (unanchored) regexes matched against csv headers to find the field's column; when set they replace the exact header match on `name`. A header matching more than one field, or a field matching more than one header, is a file-level error
 - `representations`: Array of regex patterns, tried in order (first match wins). Named capture groups and static `args` supply the type's value args; static args win on overlap. A representation with `is_null: true` resolves to null (nullable fields only). See README.md for the full reference.
 
 The pipeline processes data concurrently using goroutines and channels. The reader checks the header synchronously before the goroutines start. Output (and the optional data failure report) is written to temporary files that are only renamed into place when the run succeeds.

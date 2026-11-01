@@ -1,0 +1,17 @@
+name: header_patterns_replace_name
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  # header_patterns replace the exact match on name: the 'first_name'
+  # column does not match
+  - name: first_name
+    header_patterns:
+      - "^First Name$"
+      - "^Given Name$"
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.+)$"

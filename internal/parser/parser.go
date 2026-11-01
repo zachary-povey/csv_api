@@ -50,6 +50,8 @@ type Parser struct {
 	config          *config.Config
 	opts            options.Options
 	representations [][]compiledRepresentation
+	// how each field's column is named in errors, in config order
+	columnLabels []string
 	// optional destination for rows dropped for invalid data
 	dataFailureWriter *csv.Writer
 
@@ -59,9 +61,13 @@ type Parser struct {
 
 // NewParser compiles every representation pattern in the config up front.
 // LoadConfig has already checked the patterns, so errors here are unexpected.
-func NewParser(conf *config.Config, opts options.Options, dataFailureWriter *csv.Writer) (*Parser, error) {
+// columnNames are the headers of the columns the fields were read from, in
+// config order (see reader.ColumnNames); errors name columns by them.
+func NewParser(conf *config.Config, opts options.Options, dataFailureWriter *csv.Writer, columnNames []string) (*Parser, error) {
 	representations := make([][]compiledRepresentation, len(conf.Fields))
+	columnLabels := make([]string, len(conf.Fields))
 	for i, field := range conf.Fields {
+		columnLabels[i] = columnLabel(field.Name, columnNames[i])
 		for _, rep := range field.Representations {
 			rgx, _, err := config.CompilePattern(rep.Pattern)
 			if err != nil {
@@ -74,8 +80,19 @@ func NewParser(conf *config.Config, opts options.Options, dataFailureWriter *csv
 		config:            conf,
 		opts:              opts,
 		representations:   representations,
+		columnLabels:      columnLabels,
 		dataFailureWriter: dataFailureWriter,
 	}, nil
+}
+
+// columnLabel names a column in errors by its header text, which is what the
+// producer sees in the file, adding the field name when header_patterns mapped
+// a header that differs from it.
+func columnLabel(fieldName string, header string) string {
+	if header == "" || header == fieldName {
+		return fmt.Sprintf("column '%s'", fieldName)
+	}
+	return fmt.Sprintf("column '%s' (field '%s')", header, fieldName)
 }
 
 // parseValue resolves a single cell against its field's representations and
@@ -103,11 +120,11 @@ func (p *Parser) parseValue(fieldIndex int, value string) (any, error) {
 
 		parsed_value, err := Convert(field_args, field.LogicalTypeConfig)
 		if err != nil {
-			return nil, fmt.Errorf("column '%s': failed to convert '%s' to %v: %s (resolved args: %v)", field.Name, value, field.RawLogicalTypeConfig["name"], err, field_args)
+			return nil, fmt.Errorf("%s: failed to convert '%s' to %v: %s (resolved args: %v)", p.columnLabels[fieldIndex], value, field.RawLogicalTypeConfig["name"], err, field_args)
 		}
 		return parsed_value, nil
 	}
-	return nil, fmt.Errorf("column '%s': value '%s' did not match any pattern", field.Name, value)
+	return nil, fmt.Errorf("%s: value '%s' did not match any pattern", p.columnLabels[fieldIndex], value)
 }
 
 func (p *Parser) ParseData(input_channel chan reader.Record, output_channel chan map[string]any, wg *sync.WaitGroup, errTracker *error_tracking.ErrorTracker) {

@@ -1,0 +1,26 @@
+name: header_patterns_header_ambiguous
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  - name: first_name
+    header_patterns:
+      - "(?i)name"
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.+)$"
+  - name: last_name
+    header_patterns:
+      - "(?i)last"
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.+)$"
+  - name: email
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.+)$"

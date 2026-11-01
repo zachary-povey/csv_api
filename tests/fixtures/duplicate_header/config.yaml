@@ -1,0 +1,12 @@
+name: duplicate_header
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  - name: name
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.+)$"

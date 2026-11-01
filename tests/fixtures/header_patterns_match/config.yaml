@@ -1,0 +1,37 @@
+name: header_patterns_match
+fields:
+  # no header_patterns: matched by an exact header match on name
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  # header_patterns are not anchored and tried against every header
+  - name: first_name
+    header_patterns:
+      - "(?i)^\\s*first[ _]?name\\s*$"
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.+)$"
+  - name: amount
+    header_patterns:
+      - "^Amount \\((GBP|EUR)\\)$"
+      - "^Total$"
+    logical_type:
+      name: decimal
+      args:
+        precision: 10
+        scale: 2
+    representations:
+      - pattern: "^[0-9]+\\.[0-9]{2}$"
+  # an optional field whose patterns match no header is null
+  - name: notes
+    required: false
+    nullable: true
+    header_patterns:
+      - "^Notes?$"
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.*)$"

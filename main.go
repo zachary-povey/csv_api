@@ -158,12 +158,16 @@ func parse(configPath string, inputPath string, outputPath string, opts options.
 	errorTracker := error_tracking.NewErrorTracker(opts.FailFast, opts.MaxErrors)
 	errorTracker.ErrorReport.DataFailuresDropped = !opts.ErrorOnDataFailures
 
-	dataReader, executionErr, fileErr := reader.Open(inputPath, config)
+	dataReader, executionErr, fileErrs := reader.Open(inputPath, config)
 	if executionErr != nil {
 		return executionErr
 	}
-	if fileErr != nil {
-		errorTracker.AddReportError(fileErr.Error(), error_tracking.File)
+	if len(fileErrs) > 0 {
+		// the header is checked in one go, so report every problem with it
+		// (even with fail-fast on): no rows have been read yet
+		for _, fileErr := range fileErrs {
+			errorTracker.ErrorReport.FileErrors = append(errorTracker.ErrorReport.FileErrors, fileErr.Error())
+		}
 		return errors.New(errorTracker.ErrorReport.ConsoleFormat())
 	}
 
@@ -194,7 +198,7 @@ func parse(configPath string, inputPath string, outputPath string, opts options.
 		}
 	}
 
-	dataParser, err := parser.NewParser(config, opts, dataFailureWriter)
+	dataParser, err := parser.NewParser(config, opts, dataFailureWriter, dataReader.ColumnNames())
 	if err != nil {
 		return fmt.Errorf("invalid config: %w", err)
 	}

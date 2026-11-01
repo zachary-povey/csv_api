@@ -174,6 +174,7 @@ INVALID_CONFIG_FIXTURES = {
     "config_is_null_with_args",
     "config_is_null_named_group",
     "config_required_not_nullable",
+    "config_header_pattern_invalid",
 }
 
 

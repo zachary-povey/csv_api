@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/zachary-povey/csv_api/internal/config"
@@ -28,13 +29,13 @@ type Reader struct {
 	file           *os.File
 	csvReader      *csv.Reader
 	config         *config.Config
-	fieldPositions map[string]*int
+	fieldPositions []*int
 }
 
 // Open opens the data file, reads the header and checks it against the
 // config. The returned execution error is set when the file cannot be read at
-// all; the file error is set when the header is not valid for the config.
-func Open(filepath string, config *config.Config) (reader *Reader, executionErr error, fileErr error) {
+// all; the file errors are set when the header is not valid for the config.
+func Open(filepath string, config *config.Config) (reader *Reader, executionErr error, fileErrs []error) {
 	file, err := os.Open(filepath)
 	if err != nil {
 		return nil, fmt.Errorf("error opening data file: %w", err), nil
@@ -44,13 +45,13 @@ func Open(filepath string, config *config.Config) (reader *Reader, executionErr 
 	header, headerErr := csvReader.Read()
 	if headerErr != nil {
 		file.Close()
-		return nil, nil, fmt.Errorf("error reading CSV header: %s", headerErr)
+		return nil, nil, []error{fmt.Errorf("error reading CSV header: %s", headerErr)}
 	}
 
-	fieldPositions, fieldPosErr := getFieldPositions(config, header)
-	if fieldPosErr != nil {
+	fieldPositions, fieldPosErrs := getFieldPositions(config, header)
+	if len(fieldPosErrs) > 0 {
 		file.Close()
-		return nil, nil, fieldPosErr
+		return nil, nil, fieldPosErrs
 	}
 
 	return &Reader{
@@ -60,6 +61,18 @@ func Open(filepath string, config *config.Config) (reader *Reader, executionErr 
 		config:         config,
 		fieldPositions: fieldPositions,
 	}, nil, nil
+}
+
+// ColumnNames gives, in config order, the header of the column each field was
+// read from ("" for a missing optional field).
+func (r *Reader) ColumnNames() []string {
+	names := make([]string, len(r.fieldPositions))
+	for i, position := range r.fieldPositions {
+		if position != nil {
+			names[i] = r.Header[*position]
+		}
+	}
+	return names
 }
 
 func (r *Reader) ReadRows(channel chan Record, wg *sync.WaitGroup, errTracker *error_tracking.ErrorTracker) {
@@ -90,8 +103,7 @@ func (r *Reader) ReadRows(channel chan Record, wg *sync.WaitGroup, errTracker *e
 
 		line, _ := r.csvReader.FieldPos(0)
 		output_record := []*string{}
-		for _, fieldName := range r.config.AllFieldNames() {
-			fieldPosition := r.fieldPositions[fieldName]
+		for _, fieldPosition := range r.fieldPositions {
 			if fieldPosition == nil {
 				// aka a missing, non-required, field
 				output_record = append(output_record, nil)
@@ -110,37 +122,73 @@ func (r *Reader) ReadRows(channel chan Record, wg *sync.WaitGroup, errTracker *e
 	}
 }
 
-func getFieldPositions(config *config.Config, header []string) (map[string]*int, error) {
-	fieldsFound := []string{}
-	fieldPositions := map[string]*int{}
-	fieldMap := config.FieldMap()
+// getFieldPositions finds each configured field's column, in config order (nil
+// for a missing optional field). It returns every header problem found: a
+// header matching more than one field, a field matching more than one header,
+// and missing required fields.
+func getFieldPositions(conf *config.Config, header []string) ([]*int, []error) {
+	errs := []error{}
+	matches := make([][]int, len(conf.Fields))
 
-	for position, column_name := range header {
-		if _, exists := fieldMap[column_name]; exists {
-			fieldsFound = append(fieldsFound, column_name)
-			fieldPositions[column_name] = &position
+	for position, columnName := range header {
+		matchedFields := []string{}
+		for i, field := range conf.Fields {
+			if field.MatchesHeader(columnName) {
+				matches[i] = append(matches[i], position)
+				matchedFields = append(matchedFields, quoted(field.Name))
+			}
+		}
+		if len(matchedFields) > 1 {
+			errs = append(errs, fmt.Errorf("header %s matches more than one field: %s",
+				describeColumn(header, position), strings.Join(matchedFields, ", ")))
 		}
 	}
 
-	missingRequiredFields := missingEntries(fieldsFound, config.RequiredFieldNames())
-	if len(missingRequiredFields) > 0 {
-		return nil, fmt.Errorf("input data is missing some required fields: %s", missingRequiredFields)
+	fieldPositions := make([]*int, len(conf.Fields))
+	missingRequired := []string{}
+	for i, field := range conf.Fields {
+		switch len(matches[i]) {
+		case 0:
+			if field.IsRequired() {
+				missingRequired = append(missingRequired, describeMissing(field))
+			}
+		case 1:
+			fieldPositions[i] = &matches[i][0]
+		default:
+			columns := []string{}
+			for _, position := range matches[i] {
+				columns = append(columns, describeColumn(header, position))
+			}
+			errs = append(errs, fmt.Errorf("field '%s' matches more than one header: %s",
+				field.Name, strings.Join(columns, ", ")))
+		}
 	}
 
-	return fieldPositions, nil
+	if len(missingRequired) > 0 {
+		errs = append(errs, fmt.Errorf("input data is missing some required fields: [%s]",
+			strings.Join(missingRequired, ", ")))
+	}
+	return fieldPositions, errs
 }
 
-func missingEntries(s []string, entries []string) []string {
-	entrySet := make(map[string]struct{}, len(s))
-	for _, entry := range s {
-		entrySet[entry] = struct{}{} // used as a dummy value
-	}
+// describeColumn names a column by its header text and 1-based position.
+func describeColumn(header []string, position int) string {
+	return fmt.Sprintf("%s (column %d)", quoted(header[position]), position+1)
+}
 
-	missingEntries := []string{}
-	for _, entry := range entries {
-		if _, found := entrySet[entry]; !found {
-			missingEntries = append(missingEntries, entry)
-		}
+// describeMissing names a missing field, with the header_patterns it was
+// looked up by when it has them.
+func describeMissing(field config.FieldConfig) string {
+	if len(field.HeaderPatterns) == 0 {
+		return field.Name
 	}
-	return missingEntries
+	patterns := []string{}
+	for _, pattern := range field.HeaderPatterns {
+		patterns = append(patterns, quoted(pattern))
+	}
+	return fmt.Sprintf("%s (no header matches header_patterns %s)", field.Name, strings.Join(patterns, ", "))
+}
+
+func quoted(s string) string {
+	return "'" + s + "'"
 }

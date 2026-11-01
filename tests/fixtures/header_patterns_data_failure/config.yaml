@@ -1,0 +1,17 @@
+name: header_patterns_data_failure
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  - name: amount
+    header_patterns:
+      - "^Amount \\(GBP\\)$"
+    logical_type:
+      name: decimal
+      args:
+        precision: 10
+        scale: 2
+    representations:
+      - pattern: "^[0-9]+\\.[0-9]{2}$"
