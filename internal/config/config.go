@@ -57,7 +57,7 @@ func (StringTypeConfig) isLjc() {}
 
 type DecimalTypeConfig struct {
 	Name LogicalType     `validate:"required"`
-	Args DecimalTypeArgs `yaml:"args"`
+	Args DecimalTypeArgs `mapstructure:"args"`
 }
 
 type DecimalTypeArgs struct {
@@ -71,7 +71,7 @@ func (DecimalTypeConfig) isLjc() {}
 
 type EnumTypeConfig struct {
 	Name LogicalType  `validate:"required"`
-	Args EnumTypeArgs `yaml:"args"`
+	Args EnumTypeArgs `mapstructure:"args"`
 }
 
 type EnumTypeArgs struct {
@@ -102,7 +102,7 @@ func (fc *FieldConfig) UnmarshalTypeConfigs() error {
 	logicalTypeName := fc.RawLogicalTypeConfig["name"]
 	logicalTypeNameStr, ok := logicalTypeName.(string)
 	if !ok {
-		return fmt.Errorf("logical type name is not a string: %v", logicalTypeName)
+		return fmt.Errorf("field '%s': logical type name is not a string: %v", fc.Name, logicalTypeName)
 	}
 	logicalTypeName = LogicalType(logicalTypeNameStr)
 
@@ -123,20 +123,35 @@ func (fc *FieldConfig) UnmarshalTypeConfigs() error {
 	case Date:
 		fc.LogicalTypeConfig, narrowingError = narrowType[DateTypeConfig](*fc)
 	default:
-		return fmt.Errorf("unknown logical type in config: '%s'", logicalTypeName)
+		return fmt.Errorf("field '%s': unknown logical type in config: '%s'", fc.Name, logicalTypeName)
 	}
 
-	return narrowingError
+	if narrowingError != nil {
+		return fmt.Errorf("field '%s': invalid logical_type: %w", fc.Name, narrowingError)
+	}
+	return nil
 }
 
 func narrowType[T LogicalTypeConfig](fc FieldConfig) (T, error) {
-	var typedConfig T
-	err := mapstructure.Decode(fc.RawLogicalTypeConfig, &typedConfig)
+	// ErrorUnused rejects keys (under logical_type or its args) that don't
+	// match a field of the type's config struct, e.g. a typo in an arg name.
+	// Decoding via a wrapper gives errors a 'logical_type' prefix.
+	var wrapper struct {
+		LogicalType T `mapstructure:"logical_type"`
+	}
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		ErrorUnused: true,
+		Result:      &wrapper,
+	})
+	if err != nil {
+		return wrapper.LogicalType, err
+	}
+	err = decoder.Decode(map[string]any{"logical_type": fc.RawLogicalTypeConfig})
+	typedConfig := wrapper.LogicalType
 	if err != nil {
 		return typedConfig, err
 	}
 
-	// todo: validate no extras
 	validate := validator.New(validator.WithRequiredStructEnabled())
 	err = validate.Struct(typedConfig)
 	if err != nil {
@@ -168,7 +183,6 @@ func LoadConfig(filename string) (*Config, error) {
 		if err != nil {
 			return nil, err
 		}
-		validate.Struct(config.Fields[i].LogicalTypeConfig)
 	}
 
 	return &config, nil

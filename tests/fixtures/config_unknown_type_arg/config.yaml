@@ -1,0 +1,9 @@
+fields:
+  - name: status
+    logical_type:
+      name: enum
+      args:
+        permitted_values: [active, inactive]
+        case_insensitive: true # not an arg of the enum type
+    representations:
+      - pattern: "^(active|inactive)$"

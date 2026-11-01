@@ -1,0 +1,7 @@
+fields:
+  - name: label
+    logical_type:
+      name: string
+      max_length: 10 # not a key of the string type
+    representations:
+      - pattern: "^(.*)$"

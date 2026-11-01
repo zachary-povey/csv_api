@@ -1,0 +1,7 @@
+fields:
+  - name: label
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(.*)$"
+        is_nul: true # typo of is_null

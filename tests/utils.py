@@ -143,3 +143,20 @@ def read_avro_file(file_path) -> list[dict]:
         for record in reader:
             records.append(record)
     return records
+
+
+def run_validate_config(build_path: Path, fixture_name: str) -> subprocess.CompletedProcess:
+    """Run `csv_api validate_config` against a named fixture's config.yaml.
+
+    Args:
+        build_path: Path to the csv_api binary.
+        fixture_name: Name of the subdirectory under tests/fixtures/.
+
+    Returns:
+        The completed process result.
+    """
+    config_path = FIXTURES_DIR / fixture_name / "config.yaml"
+    if not config_path.exists():
+        raise FileNotFoundError(f"Fixture config not found: {config_path}")
+    cmd = [str(build_path), "validate_config", "--config-path", str(config_path)]
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=60)

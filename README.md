@@ -159,6 +159,8 @@ fields:
 
 `logical_type.name` is one of the types below. Some types take `args` under `logical_type`. These are settings that must be the same for every value in the column (such as decimal precision or the permitted values of an enum), so they live on the type rather than on a representation.
 
+The config is checked strictly when it loads: an unknown key anywhere in it (including under `logical_type` or its `args`, e.g. a typo like `permited_values`) or a missing or conflicting type arg fails the run, and `validate_config` reports it with the field name. The exception is a representation's `args`, which are value args handed to the converter.
+
 | Type | Type args | Avro output |
 | --- | --- | --- |
 | `string` | | `string` |
