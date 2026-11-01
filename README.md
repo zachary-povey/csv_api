@@ -428,12 +428,14 @@ Measured on 2026-11-01 on a 4-cpu x86_64 Linux VM with Go 1.24 (expect different
 
 | Output  | Time (1M rows, 84 MB) | Throughput    | Peak RSS | Output size |
 | ------- | --------------------- | ------------- | -------- | ----------- |
-| Avro    | 7.8 s                 | ~129k rows/s  | 19 MiB   | 48 MB       |
-| Parquet | 6.8 s                 | ~147k rows/s  | 36 MiB   | 55 MB       |
+| Avro    | 2.6 s                 | ~385k rows/s  | 37 MiB   | 48 MB       |
+| Parquet | 3.0 s                 | ~334k rows/s  | 87 MiB   | 55 MB       |
 
-Avro rows are written in blocks of 100 rows rather than one block per row, which made the Avro output 27% smaller (65 MB before) with the same records; throughput is about the same (paired runs: ~142k vs ~148k rows/s, a gap within this VM's ±10% run-to-run variation). Larger blocks shrink the output only marginally and measured slower. (Before the parser's per-cell allocations were cut, the same machine managed ~55k rows/s for Avro and ~63k rows/s for Parquet.) `go test -bench ParseRow ./internal/parser` measures the parser alone on one benchmark row.
+Rows are validated and converted on every core: the parser runs one worker per cpu the Go runtime may use (`runtime.GOMAXPROCS`, so the `GOMAXPROCS` environment variable limits it; there is no flag). Workers only match and convert cells, in batches of up to 256 rows; one in-order stage then reports errors, drops rows, writes the data failure report and passes rows on, so the output, errors and reports are identical whatever the number of workers. Before rows were parsed in parallel the same machine managed ~130k rows/s for Avro and ~139k rows/s for Parquet (paired runs, 7.7 s and 7.2 s); with one worker (`GOMAXPROCS=1`) it is ~151k rows/s for Avro. The binary also sets the garbage collector target to `GOGC=400` unless `GOGC` is set: rows are streamed so the live heap is small, and at Go's default of 100 collection rather than parsing limited the parallel parser (~231k rows/s Avro), at the cost of the higher peak RSS above (previously 20 MiB for Avro and 36 MiB for Parquet).
 
-Memory stays flat as the file grows: rows are streamed through the pipeline (Parquet buffers up to one row group of 100,000 rows). Validation, not reading or writing, is the bottleneck. An invalid value early in a large file stops the run straight away (with the default fail-fast, or once `--max-errors` is reached).
+Avro rows are written in blocks of 100 rows rather than one block per row, which made the Avro output 27% smaller (65 MB before) with the same records; throughput was about the same. Larger blocks shrink the output only marginally and measured slower. (Before the parser's per-cell allocations were cut, the same machine managed ~55k rows/s for Avro and ~63k rows/s for Parquet single-threaded.) `go test -bench ParseRow ./internal/parser` measures the parser alone on one benchmark row.
+
+Memory stays flat as the file grows: rows are streamed through the pipeline (Parquet buffers up to one row group of 100,000 rows). An invalid value early in a large file stops the run straight away (with the default fail-fast, or once `--max-errors` is reached).
 
 ## Roadmap
 

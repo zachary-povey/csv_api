@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is a CSV validation and Avro/Parquet conversion tool with a concurrent pipeline architecture:
 
 1. **Reader** (`internal/reader`) - Reads CSV files and validates headers against config
-2. **Parser** (`internal/parser`) - Validates data using regex patterns and converts types
+2. **Parser** (`internal/parser`) - Validates data using regex patterns and converts types. Rows are dispatched in batches to one worker per GOMAXPROCS (each with its own compiled representations, since a Parser is single-goroutine); `ParseData` reassembles results in input order and does all side effects (error tracking, dropping rows, data failure report) in that single in-order stage
 3. **Avro Writer** (`internal/avro_writer`) or **Parquet Writer** (`internal/parquet_writer`) - Generates the output schema and writes output. Both have the same `Write(io.Writer, config, channel, wg, errTracker)` signature; `main.go` picks one from `--output-format` (default `avro`). Parquet uses `github.com/parquet-go/parquet-go`, keeps config field order, and can't be used with `--stream` (its footer is written at the end)
 
 The main processing flow uses Go channels for concurrent execution:

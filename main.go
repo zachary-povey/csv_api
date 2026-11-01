@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sync"
 
 	"github.com/fatih/color"
@@ -27,9 +28,18 @@ const (
 	// rows queued between pipeline stages; enough that the goroutines run in
 	// bursts rather than handing over (and waking each other) row by row
 	queueBuffer int = 100
+
+	// the garbage collector's GOGC target. Rows are streamed, so the live heap
+	// is a few MiB and Go's default (100) collects every few MiB allocated:
+	// with the parser on several cores, collection rather than parsing became
+	// the limit (TASK-22). The GOGC environment variable still overrides it.
+	gcPercent int = 400
 )
 
 func main() {
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(gcPercent)
+	}
 
 	app := &cli.App{
 		Name: "csv-api",

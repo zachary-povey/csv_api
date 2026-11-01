@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -17,6 +18,10 @@ import (
 // DataFailureErrorColumn is the column added to the data failure report
 // holding the reasons a row was dropped.
 const DataFailureErrorColumn = "__csv_api_error__"
+
+// batchSize is the most rows handed to a worker at once: enough to make the
+// hand-over cheap per row, few enough to keep little in flight.
+const batchSize = 256
 
 type compiledRepresentation struct {
 	regex *regexp.Regexp
@@ -88,6 +93,10 @@ type Parser struct {
 	// optional destination for rows dropped for invalid data
 	dataFailureWriter *csv.Writer
 
+	// the number of goroutines validating and converting rows in parallel
+	// (runtime.GOMAXPROCS by default)
+	Workers int
+
 	// rows dropped for invalid data, set once ParseData returns
 	DroppedRows int
 }
@@ -116,7 +125,25 @@ func NewParser(conf *config.Config, opts options.Options, dataFailureWriter *csv
 		columnLabels:      columnLabels,
 		columnNames:       columnNames,
 		dataFailureWriter: dataFailureWriter,
+		Workers:           runtime.GOMAXPROCS(0),
 	}, nil
+}
+
+// worker returns a copy of the parser for one worker goroutine to call
+// parseRow on: the compiled regexes are safe to share, but each
+// representation's value-args map is reused for every match, so each worker
+// needs its own.
+func (p *Parser) worker() *Parser {
+	w := *p
+	w.representations = make([][]compiledRepresentation, len(p.representations))
+	for i, reps := range p.representations {
+		w.representations[i] = make([]compiledRepresentation, len(reps))
+		for j, rep := range reps {
+			rep.args = maps.Clone(rep.args)
+			w.representations[i][j] = rep
+		}
+	}
+	return &w
 }
 
 // columnLabel names a column in errors by its header text, which is what the
@@ -183,40 +210,112 @@ func (p *Parser) parseRow(row reader.Record) (map[string]any, []error_tracking.C
 	return resolvedRow, failures
 }
 
+// batch is a run of consecutive rows parsed by one worker. done is closed
+// once resolved and failures are filled in.
+type batch struct {
+	rows     []reader.Record
+	resolved []map[string]any
+	failures [][]error_tracking.CellError
+	done     chan struct{}
+}
+
+// ParseData validates and converts the rows from the reader, sending valid
+// rows on in input order. Rows are parsed by p.Workers goroutines in batches;
+// only the pure per-row work (parseRow) runs in parallel. Everything with side
+// effects (error tracking, dropping rows, the data failure report, sending
+// rows to the writer) happens here, one row at a time in input order, so the
+// result is the same whatever the number of workers.
 func (p *Parser) ParseData(input_channel chan reader.Record, output_channel chan map[string]any, wg *sync.WaitGroup, errTracker *error_tracking.ErrorTracker) {
 	defer wg.Done()
 	defer close(output_channel)
 
-	// always drain the input channel so the reader never blocks; the reader
-	// stops and closes it when processing is killed
-	for row := range input_channel {
-		resolvedRow, failures := p.parseRow(row)
-
-		if len(failures) > 0 {
-			if p.opts.ErrorOnDataFailures {
-				for _, failure := range failures {
-					errTracker.AddCellError(failure)
+	workers := max(p.Workers, 1)
+	jobs := make(chan *batch, workers)
+	// batches in input order, a few ahead so workers needn't wait for a slow one
+	ordered := make(chan *batch, 2*workers)
+	go dispatchBatches(input_channel, jobs, ordered)
+	for range workers {
+		go func(w *Parser) {
+			for b := range jobs {
+				for i, row := range b.rows {
+					b.resolved[i], b.failures[i] = w.parseRow(row)
 				}
-			} else {
-				p.DroppedRows++
-				if p.dataFailureWriter != nil {
-					texts := make([]string, len(failures))
-					for j, failure := range failures {
-						texts[j] = failure.Text()
-					}
-					reportRow := append(append([]string{}, row.Raw...), strings.Join(texts, "; "))
-					if err := p.dataFailureWriter.Write(reportRow); err != nil {
-						errTracker.AddExecutionError(fmt.Errorf("error writing data failure report: %w", err))
-					}
+				close(b.done)
+			}
+		}(p.worker())
+	}
+
+	// workers never wait on this loop, so it always gets through every batch
+	// and dispatchBatches always drains the input: the reader never blocks
+	for b := range ordered {
+		<-b.done
+		for i, row := range b.rows {
+			p.handleRow(row, b.resolved[i], b.failures[i], output_channel, errTracker)
+		}
+	}
+}
+
+// dispatchBatches groups the input rows into batches, sending each to the
+// workers and, in input order, to ParseData. A batch is sent as soon as no
+// further row is ready, so rows aren't held back waiting for a full batch
+// (with --stream they reach the output as they are validated). It always
+// drains the input until the reader closes it.
+func dispatchBatches(input_channel chan reader.Record, jobs chan<- *batch, ordered chan<- *batch) {
+	defer close(jobs)
+	defer close(ordered)
+	for row := range input_channel {
+		rows := make([]reader.Record, 1, batchSize)
+		rows[0] = row
+	fill:
+		for len(rows) < batchSize {
+			select {
+			case row, ok := <-input_channel:
+				if !ok {
+					break fill
+				}
+				rows = append(rows, row)
+			default:
+				break fill
+			}
+		}
+		b := &batch{
+			rows:     rows,
+			resolved: make([]map[string]any, len(rows)),
+			failures: make([][]error_tracking.CellError, len(rows)),
+			done:     make(chan struct{}),
+		}
+		ordered <- b
+		jobs <- b
+	}
+}
+
+// handleRow acts on one parsed row: a valid row goes to the writer, one with
+// failures is reported or dropped.
+func (p *Parser) handleRow(row reader.Record, resolvedRow map[string]any, failures []error_tracking.CellError, output_channel chan map[string]any, errTracker *error_tracking.ErrorTracker) {
+	if len(failures) > 0 {
+		if p.opts.ErrorOnDataFailures {
+			for _, failure := range failures {
+				errTracker.AddCellError(failure)
+			}
+		} else {
+			p.DroppedRows++
+			if p.dataFailureWriter != nil {
+				texts := make([]string, len(failures))
+				for j, failure := range failures {
+					texts[j] = failure.Text()
+				}
+				reportRow := append(append([]string{}, row.Raw...), strings.Join(texts, "; "))
+				if err := p.dataFailureWriter.Write(reportRow); err != nil {
+					errTracker.AddExecutionError(fmt.Errorf("error writing data failure report: %w", err))
 				}
 			}
-			continue
 		}
+		return
+	}
 
-		select {
-		case <-errTracker.KillCh:
-			// keep draining input until the reader closes it
-		case output_channel <- resolvedRow:
-		}
+	select {
+	case <-errTracker.KillCh:
+		// keep draining input until the reader closes it
+	case output_channel <- resolvedRow:
 	}
 }

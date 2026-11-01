@@ -1,12 +1,18 @@
 package parser
 
 import (
+	"bytes"
+	"encoding/csv"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/zachary-povey/csv_api/internal/config"
+	"github.com/zachary-povey/csv_api/internal/error_tracking"
 	"github.com/zachary-povey/csv_api/internal/options"
 	"github.com/zachary-povey/csv_api/internal/reader"
 )
@@ -77,6 +83,26 @@ var benchmarkRow = []string{"1", "customer 1", "-463.01", "0.0001", "closed", "2
 
 func newBenchmarkParser(t testing.TB) (*Parser, reader.Record) {
 	t.Helper()
+	p, err := NewParser(loadBenchmarkConfig(t), options.Options{}, nil, benchmarkColumns)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p, record(2, benchmarkRow)
+}
+
+// the header of the benchmark csv: the field names, in config order
+var benchmarkColumns = []string{"id", "name", "amount", "ratio", "status", "created_on", "updated_at", "active", "note"}
+
+func record(line int, raw []string) reader.Record {
+	values := make([]*string, len(raw))
+	for i := range raw {
+		values[i] = &raw[i]
+	}
+	return reader.Record{Line: line, Raw: raw, Values: values}
+}
+
+func loadBenchmarkConfig(t testing.TB) *config.Config {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte(benchmarkConfig), 0o644); err != nil {
 		t.Fatal(err)
@@ -85,19 +111,7 @@ func newBenchmarkParser(t testing.TB) (*Parser, reader.Record) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	columnNames := make([]string, len(conf.Fields))
-	for i, field := range conf.Fields {
-		columnNames[i] = field.Name
-	}
-	p, err := NewParser(conf, options.Options{}, nil, columnNames)
-	if err != nil {
-		t.Fatal(err)
-	}
-	values := make([]*string, len(benchmarkRow))
-	for i := range benchmarkRow {
-		values[i] = &benchmarkRow[i]
-	}
-	return p, reader.Record{Line: 2, Raw: benchmarkRow, Values: values}
+	return conf
 }
 
 // maxAllocsPerRow is the TASK-20 budget for parsing one benchmark row: before
@@ -108,6 +122,9 @@ const maxAllocsPerRow = 45
 // TASK-20 AC#3: a representative row of the benchmark's field types parses
 // with at most maxAllocsPerRow allocations.
 func TestParseRowAllocations(t *testing.T) {
+	if raceEnabled {
+		t.Skip("the race detector adds allocations")
+	}
 	p, row := newBenchmarkParser(t)
 	if _, failures := p.parseRow(row); len(failures) > 0 {
 		t.Fatalf("unexpected failures: %v", failures)
@@ -159,5 +176,166 @@ func TestRepresentationMatchArgs(t *testing.T) {
 	}
 	if rep.match("June") {
 		t.Errorf("'June' matched")
+	}
+}
+
+// interleavedRows are benchmark rows, some with one or two invalid values,
+// spread so that failures fall in every batch and across batch boundaries.
+func interleavedRows(n int) []reader.Record {
+	rows := make([]reader.Record, n)
+	for i := range n {
+		raw := []string{fmt.Sprint(i), fmt.Sprintf("customer %d", i), fmt.Sprintf("%d.%02d", i, i%100), "0.5", "open", "2024-01-02", "2024-01-02T03:04:05Z", "true", ""}
+		if i%7 == 3 {
+			raw[0] = fmt.Sprintf("x%d", i)
+		}
+		if i%11 == 5 {
+			raw[4] = "unknown"
+			raw[5] = "2024-13-45"
+		}
+		rows[i] = record(i+2, raw)
+	}
+	return rows
+}
+
+type parseResult struct {
+	output  []string
+	report  string
+	errors  []error_tracking.CellError
+	dropped int
+	stop    string
+}
+
+// parseWithWorkers runs ParseData over rows with the given number of
+// workers, feeding the input the way the reader does (stopping on KillCh).
+func parseWithWorkers(t *testing.T, conf *config.Config, rows []reader.Record, workers int, opts options.Options, failFast bool, maxErrors int) parseResult {
+	t.Helper()
+	var report bytes.Buffer
+	reportWriter := csv.NewWriter(&report)
+	p, err := NewParser(conf, opts, reportWriter, benchmarkColumns)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Workers = workers
+	tracker := error_tracking.NewErrorTracker(failFast, maxErrors)
+	input := make(chan reader.Record, 100)
+	output := make(chan map[string]any, 100)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		defer close(input)
+		for _, row := range rows {
+			select {
+			case <-tracker.KillCh:
+				return
+			case input <- row:
+			}
+		}
+	}()
+	go p.ParseData(input, output, &wg, tracker)
+	var result parseResult
+	for row := range output {
+		result.output = append(result.output, fmt.Sprint(row))
+	}
+	wg.Wait()
+	reportWriter.Flush()
+	result.report = report.String()
+	result.errors = tracker.ErrorReport.CellErrors
+	result.dropped = p.DroppedRows
+	result.stop = tracker.ErrorReport.StopReason
+	return result
+}
+
+// TASK-22 AC#3: with several workers, rows with data failures interleaved
+// with valid rows give exactly the single-worker result: output rows in input
+// order, the same errors in the same order with the same row numbers, the
+// same data failure report and dropped-row count, and --max-errors/fail-fast
+// stopping at the same errors.
+func TestWorkersGiveSingleWorkerResults(t *testing.T) {
+	conf := loadBenchmarkConfig(t)
+	rows := interleavedRows(5000)
+	cases := []struct {
+		name      string
+		opts      options.Options
+		failFast  bool
+		maxErrors int
+		// a stopped run may send a few more rows before noticing KillCh (as
+		// with one parser goroutine), so its output isn't compared
+		stops bool
+	}{
+		{name: "dropped rows with a data failure report", opts: options.Options{ErrorOnDataFailures: false}},
+		{name: "all errors collected", opts: options.Options{ErrorOnDataFailures: true}},
+		{name: "max errors", opts: options.Options{ErrorOnDataFailures: true}, maxErrors: 300, stops: true},
+		{name: "fail fast", opts: options.Options{ErrorOnDataFailures: true}, failFast: true, stops: true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			want := parseWithWorkers(t, conf, rows, 1, c.opts, c.failFast, c.maxErrors)
+			if !c.stops && len(want.output)+want.dropped+len(want.errors) == 0 {
+				t.Fatal("single-worker run gave no results")
+			}
+			for _, workers := range []int{2, 4, 8} {
+				got := parseWithWorkers(t, conf, rows, workers, c.opts, c.failFast, c.maxErrors)
+				if fmt.Sprint(got.errors) != fmt.Sprint(want.errors) {
+					t.Errorf("%d workers: errors differ:\n got %v\nwant %v", workers, got.errors, want.errors)
+				}
+				if got.stop != want.stop {
+					t.Errorf("%d workers: stop reason %q, want %q", workers, got.stop, want.stop)
+				}
+				if c.stops {
+					continue
+				}
+				if strings.Join(got.output, "\n") != strings.Join(want.output, "\n") {
+					t.Errorf("%d workers: output rows differ from one worker's", workers)
+				}
+				if got.report != want.report || got.dropped != want.dropped {
+					t.Errorf("%d workers: data failure report (%d dropped) differs from one worker's (%d dropped)", workers, got.dropped, want.dropped)
+				}
+			}
+		})
+	}
+	// the cases above really have failures in every batch
+	all := parseWithWorkers(t, conf, rows, 4, options.Options{ErrorOnDataFailures: true}, false, 0)
+	if len(all.errors) < 1000 || len(all.output) < 3000 {
+		t.Fatalf("expected many errors and valid rows, got %d and %d", len(all.errors), len(all.output))
+	}
+}
+
+// TASK-22 AC#2: when the pipeline is killed, ParseData still drains its input
+// and returns even if nothing reads its output any more.
+func TestWorkersDrainInputWhenKilled(t *testing.T) {
+	conf := loadBenchmarkConfig(t)
+	rows := interleavedRows(20000)
+	p, err := NewParser(conf, options.Options{ErrorOnDataFailures: true}, nil, benchmarkColumns)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Workers = 4
+	tracker := error_tracking.NewErrorTracker(true, 0)
+	input := make(chan reader.Record, 100)
+	output := make(chan map[string]any) // never read
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go p.ParseData(input, output, &wg, tracker)
+	go func() {
+		// the first row fails, stopping the run; the reader stops on KillCh
+		defer close(input)
+		for _, row := range rows[3:] {
+			select {
+			case <-tracker.KillCh:
+				return
+			case input <- row:
+			}
+		}
+	}()
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("ParseData did not return after the pipeline was killed")
+	}
+	if len(tracker.ErrorReport.CellErrors) != 1 || tracker.ErrorReport.CellErrors[0].Row != 5 {
+		t.Errorf("errors %v, want only row 5's", tracker.ErrorReport.CellErrors)
 	}
 }
