@@ -41,6 +41,10 @@ type FieldConfig struct {
 	// header to find the field's column. When set, they replace the exact
 	// match on Name.
 	HeaderPatterns []string `yaml:"header_patterns"`
+	// ErrorMessage is an optional plain-language message for the producer,
+	// shown (after the technical reason) with every error about the field:
+	// its data failures and a missing required column.
+	ErrorMessage string `yaml:"error_message"`
 
 	headerRegexes []*regexp.Regexp
 

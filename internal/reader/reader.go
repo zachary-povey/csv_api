@@ -182,16 +182,17 @@ func describeColumn(header []string, position int) string {
 }
 
 // describeMissing names a missing field, with the header_patterns it was
-// looked up by when it has them.
+// looked up by when it has them, and its error_message.
 func describeMissing(field config.FieldConfig) string {
-	if len(field.HeaderPatterns) == 0 {
-		return field.Name
+	description := field.Name
+	if len(field.HeaderPatterns) > 0 {
+		patterns := []string{}
+		for _, pattern := range field.HeaderPatterns {
+			patterns = append(patterns, quoted(pattern))
+		}
+		description = fmt.Sprintf("%s (no header matches header_patterns %s)", field.Name, strings.Join(patterns, ", "))
 	}
-	patterns := []string{}
-	for _, pattern := range field.HeaderPatterns {
-		patterns = append(patterns, quoted(pattern))
-	}
-	return fmt.Sprintf("%s (no header matches header_patterns %s)", field.Name, strings.Join(patterns, ", "))
+	return error_tracking.WithFieldMessage(description, field.ErrorMessage)
 }
 
 func quoted(s string) string {

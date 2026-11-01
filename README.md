@@ -94,7 +94,7 @@ These flags control how errors are handled. They are choices for whoever runs th
 | `--error-on-data-failures` | `true` | Fail the run on data failures. If `false`, rows containing invalid values are dropped, the rest are written, and a warning gives the number dropped. |
 | `--fail-fast` | `true` | Stop at the first error. If `false`, keep going and report every error found. |
 | `--max-errors` | no limit | With `--fail-fast=false`, stop after collecting this many errors. Dropped rows don't count as errors. |
-| `--data-failure-report` | none | With `--error-on-data-failures=false`, write the dropped rows to this csv file: the original header and values, plus a `__csv_api_error__` column listing every failed value in the row. |
+| `--data-failure-report` | none | With `--error-on-data-failures=false`, write the dropped rows to this csv file: the original header and values, plus a `__csv_api_error__` column listing every failed value in the row (with the field's `error_message`, if it has one). |
 | `--error-report` | `console` | Where errors are reported. Only `console` is supported for now. |
 
 Boolean flags are turned off with `=false`, e.g. `--fail-fast=false`. Setting `--max-errors` with fail-fast on, or `--data-failure-report` while erroring on data failures, is rejected.
@@ -209,6 +209,26 @@ Fields are required by default: the file must have a column for every field, and
       - pattern: "^(.*)$"
 ```
 
+`error_message` is an optional plain-language message for whoever has to fix the data, shown whenever the field fails: with each of its data failures (a value that matches no representation or fails conversion), in both the console report and the data failure report's `__csv_api_error__` column, and when its column is missing from the file. It is added after the technical reason, which is still reported, as `(note: <message>)`. Fields without one report their errors as usual.
+
+```yaml
+  - name: amount
+    error_message: "amount must be pounds with 2 decimal places, e.g. 12.50 - contact the finance team"
+    logical_type:
+      name: decimal
+      args:
+        precision: 10
+        scale: 2
+    representations:
+      - pattern: "^£?(?P<value>[0-9]+\\.[0-9]{2})$"
+```
+
+A failing value is then reported as:
+
+```
+row 3, column 'amount': value '12.5' did not match any pattern (note: amount must be pounds with 2 decimal places, e.g. 12.50 - contact the finance team)
+```
+
 ### Logical types and type args
 
 `logical_type.name` is one of the types below. Some types take `args` under `logical_type`. These are settings that must be the same for every value in the column (such as decimal precision or the permitted values of an enum), so they live on the type rather than on a representation.
@@ -258,5 +278,4 @@ At run time the converters check that the args make a valid value (e.g. a real c
 These are intended but not built yet. Work is tracked as tasks with [Backlog.md](https://github.com/MrLesk/Backlog.md) in `backlog/` (run `backlog board` or `backlog task list`).
 
 - layered config files: a shared base config with per-producer overrides merged on top (`-c base.yaml -c partner.yaml`)
-- per-field error messages: an optional message in the config, shown when a field's values fail
 - streaming output to stdout, Parquet output, and a structured (json) `--error-report`

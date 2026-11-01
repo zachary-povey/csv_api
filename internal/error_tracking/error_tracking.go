@@ -10,13 +10,49 @@ type ReportErrorType string
 const (
 	File ReportErrorType = "file"
 	Row  ReportErrorType = "row"
-	Cell ReportErrorType = "cell"
 )
+
+// CellError is a data failure: a value that matched no representation of
+// its field, or failed conversion.
+type CellError struct {
+	// 1-based line of the row in the file
+	Row int
+	// how the column is named in errors, e.g. "column 'id'"
+	Column string
+	// the field the column was read for
+	Field string
+	// the raw value from the file
+	Value string
+	// the technical reason, e.g. "value 'x' did not match any pattern"
+	Reason string
+	// the field's error_message from the config, if any
+	Message string
+}
+
+// Text describes the failure without its row: column, reason and, when the
+// field has one, its error_message.
+func (cellError CellError) Text() string {
+	return WithFieldMessage(fmt.Sprintf("%s: %s", cellError.Column, cellError.Reason), cellError.Message)
+}
+
+// WithFieldMessage adds a field's error_message, if it has one, after the
+// technical description of an error about the field.
+func WithFieldMessage(text string, message string) string {
+	if message == "" {
+		return text
+	}
+	return fmt.Sprintf("%s (note: %s)", text, message)
+}
+
+// String describes the failure with its row, as shown in the console report.
+func (cellError CellError) String() string {
+	return fmt.Sprintf("row %d, %s", cellError.Row, cellError.Text())
+}
 
 type ErrorReport struct {
 	FileErrors []string
 	RowErrors  []string
-	CellErrors []string
+	CellErrors []CellError
 	// set when collection stopped before the whole file was checked
 	StoppedEarly bool
 	// why processing was stopped, e.g. fail-fast
@@ -76,17 +112,22 @@ func (tracker *ErrorTracker) AddExecutionError(err error) {
 	tracker.kill()
 }
 
+// AddCellError records a data failure.
+func (tracker *ErrorTracker) AddCellError(cellError CellError) {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	if !tracker.underLimit() {
+		return
+	}
+	tracker.ErrorReport.CellErrors = append(tracker.ErrorReport.CellErrors, cellError)
+	tracker.checkLimit()
+}
+
+// AddReportError records a file or row error.
 func (tracker *ErrorTracker) AddReportError(err string, errType ReportErrorType) {
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
-
-	limit := tracker.maxErrors
-	if tracker.failFast {
-		limit = 1
-	}
-	if limit > 0 && tracker.ErrorReport.count() >= limit {
-		// rows already in flight when the limit was hit
-		tracker.ErrorReport.StoppedEarly = true
+	if !tracker.underLimit() {
 		return
 	}
 
@@ -95,10 +136,33 @@ func (tracker *ErrorTracker) AddReportError(err string, errType ReportErrorType)
 		tracker.ErrorReport.FileErrors = append(tracker.ErrorReport.FileErrors, err)
 	case Row:
 		tracker.ErrorReport.RowErrors = append(tracker.ErrorReport.RowErrors, err)
-	case Cell:
-		tracker.ErrorReport.CellErrors = append(tracker.ErrorReport.CellErrors, err)
 	}
+	tracker.checkLimit()
+}
 
+// limit is the number of report errors to collect before stopping (0 means
+// no limit).
+func (tracker *ErrorTracker) limit() int {
+	if tracker.failFast {
+		return 1
+	}
+	return tracker.maxErrors
+}
+
+// underLimit reports whether another report error may be collected; if not,
+// it was in flight when the limit was hit and is discarded. The caller holds mu.
+func (tracker *ErrorTracker) underLimit() bool {
+	limit := tracker.limit()
+	if limit > 0 && tracker.ErrorReport.count() >= limit {
+		tracker.ErrorReport.StoppedEarly = true
+		return false
+	}
+	return true
+}
+
+// checkLimit stops processing once the limit is reached. The caller holds mu.
+func (tracker *ErrorTracker) checkLimit() {
+	limit := tracker.limit()
 	if limit > 0 && tracker.ErrorReport.count() >= limit {
 		if tracker.failFast {
 			tracker.ErrorReport.StopReason = "fail-fast is on"

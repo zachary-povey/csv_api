@@ -59,7 +59,7 @@ func (report *ErrorReport) ConsoleFormat() string {
 
 		if len(report.CellErrors) > 0 {
 			sections = append(sections,
-				color.RedString("The following invalid data values were detected:\n")+FormatBulletList(report.CellErrors))
+				color.RedString("The following invalid data values were detected:\n")+FormatBulletList(cellErrorStrings(report.CellErrors)))
 		} else if report.DataFailuresDropped {
 			sections = append(sections, color.CyanString("Rows with invalid data values are dropped rather than reported (--error-on-data-failures=false)."))
 		} else if !report.StoppedEarly {
@@ -75,4 +75,12 @@ func (report *ErrorReport) ConsoleFormat() string {
 	sections = append(sections, color.RedString("✗ The CSV has failed validation"))
 
 	return strings.Join(sections, "\n\n")
+}
+
+func cellErrorStrings(cellErrors []CellError) []string {
+	strs := make([]string, len(cellErrors))
+	for i, cellError := range cellErrors {
+		strs[i] = cellError.String()
+	}
+	return strs
 }

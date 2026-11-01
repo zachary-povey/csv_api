@@ -97,7 +97,8 @@ func columnLabel(fieldName string, header string) string {
 
 // parseValue resolves a single cell against its field's representations and
 // converts it to the field's logical type. A nil result with no error is a
-// null (only possible on nullable fields, checked at config load).
+// null (only possible on nullable fields, checked at config load). The error
+// is the technical reason the value failed.
 func (p *Parser) parseValue(fieldIndex int, value string) (any, error) {
 	field := p.config.Fields[fieldIndex]
 
@@ -120,11 +121,11 @@ func (p *Parser) parseValue(fieldIndex int, value string) (any, error) {
 
 		parsed_value, err := Convert(field_args, field.LogicalTypeConfig)
 		if err != nil {
-			return nil, fmt.Errorf("%s: failed to convert '%s' to %v: %s (resolved args: %v)", p.columnLabels[fieldIndex], value, field.RawLogicalTypeConfig["name"], err, field_args)
+			return nil, fmt.Errorf("failed to convert '%s' to %v: %s (resolved args: %v)", value, field.RawLogicalTypeConfig["name"], err, field_args)
 		}
 		return parsed_value, nil
 	}
-	return nil, fmt.Errorf("%s: value '%s' did not match any pattern", p.columnLabels[fieldIndex], value)
+	return nil, fmt.Errorf("value '%s' did not match any pattern", value)
 }
 
 func (p *Parser) ParseData(input_channel chan reader.Record, output_channel chan map[string]any, wg *sync.WaitGroup, errTracker *error_tracking.ErrorTracker) {
@@ -135,7 +136,7 @@ func (p *Parser) ParseData(input_channel chan reader.Record, output_channel chan
 	// stops and closes it when processing is killed
 	for row := range input_channel {
 		resolvedRow := map[string]any{}
-		failures := []string{}
+		failures := []error_tracking.CellError{}
 
 		// check every cell so a dropped row reports all of its problems
 		for i, value := range row.Values {
@@ -147,7 +148,14 @@ func (p *Parser) ParseData(input_channel chan reader.Record, output_channel chan
 			}
 			parsed_value, err := p.parseValue(i, *value)
 			if err != nil {
-				failures = append(failures, err.Error())
+				failures = append(failures, error_tracking.CellError{
+					Row:     row.Line,
+					Column:  p.columnLabels[i],
+					Field:   p.config.Fields[i].Name,
+					Value:   *value,
+					Reason:  err.Error(),
+					Message: p.config.Fields[i].ErrorMessage,
+				})
 				continue
 			}
 			resolvedRow[p.config.Fields[i].Name] = parsed_value
@@ -156,12 +164,16 @@ func (p *Parser) ParseData(input_channel chan reader.Record, output_channel chan
 		if len(failures) > 0 {
 			if p.opts.ErrorOnDataFailures {
 				for _, failure := range failures {
-					errTracker.AddReportError(fmt.Sprintf("row %d, %s", row.Line, failure), error_tracking.Cell)
+					errTracker.AddCellError(failure)
 				}
 			} else {
 				p.DroppedRows++
 				if p.dataFailureWriter != nil {
-					reportRow := append(append([]string{}, row.Raw...), strings.Join(failures, "; "))
+					texts := make([]string, len(failures))
+					for j, failure := range failures {
+						texts[j] = failure.Text()
+					}
+					reportRow := append(append([]string{}, row.Raw...), strings.Join(texts, "; "))
 					if err := p.dataFailureWriter.Write(reportRow); err != nil {
 						errTracker.AddExecutionError(fmt.Errorf("error writing data failure report: %w", err))
 					}
