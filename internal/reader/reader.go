@@ -88,7 +88,10 @@ func (r *Reader) ReadRows(channel chan Record, wg *sync.WaitGroup, errTracker *e
 		if errors.Is(err, csv.ErrFieldCount) {
 			// the rest of the file can still be read reliably
 			line, _ := r.csvReader.FieldPos(0)
-			errTracker.AddReportError(fmt.Sprintf("row %d has %d values but the header has %d", line, len(input_record), len(r.Header)), error_tracking.Row)
+			errTracker.AddRowError(error_tracking.RowError{
+				Row:    line,
+				Reason: fmt.Sprintf("row %d has %d values but the header has %d", line, len(input_record), len(r.Header)),
+			})
 			if errTracker.Killed() {
 				errTracker.MarkStoppedEarly("")
 				return
@@ -96,7 +99,12 @@ func (r *Reader) ReadRows(channel chan Record, wg *sync.WaitGroup, errTracker *e
 			continue
 		} else if err != nil {
 			// e.g. a broken quote: later rows can't be located reliably
-			errTracker.AddReportError(err.Error(), error_tracking.Row)
+			rowError := error_tracking.RowError{Reason: err.Error()}
+			var parseErr *csv.ParseError
+			if errors.As(err, &parseErr) {
+				rowError.Row = parseErr.StartLine
+			}
+			errTracker.AddRowError(rowError)
 			errTracker.MarkStoppedEarly("the file could not be parsed past this point")
 			return
 		}

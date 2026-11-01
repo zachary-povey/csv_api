@@ -5,13 +5,6 @@ import (
 	"sync"
 )
 
-type ReportErrorType string
-
-const (
-	File ReportErrorType = "file"
-	Row  ReportErrorType = "row"
-)
-
 // CellError is a data failure: a value that matched no representation of
 // its field, or failed conversion.
 type CellError struct {
@@ -19,6 +12,8 @@ type CellError struct {
 	Row int
 	// how the column is named in errors, e.g. "column 'id'"
 	Column string
+	// the column's header in the file
+	Header string
 	// the field the column was read for
 	Field string
 	// the raw value from the file
@@ -49,9 +44,21 @@ func (cellError CellError) String() string {
 	return fmt.Sprintf("row %d, %s", cellError.Row, cellError.Text())
 }
 
+// RowError is a format error in a row, e.g. the wrong number of values.
+type RowError struct {
+	// 1-based line of the row in the file
+	Row int
+	// the full description, including the row
+	Reason string
+}
+
+func (rowError RowError) String() string {
+	return rowError.Reason
+}
+
 type ErrorReport struct {
 	FileErrors []string
-	RowErrors  []string
+	RowErrors  []RowError
 	CellErrors []CellError
 	// set when collection stopped before the whole file was checked
 	StoppedEarly bool
@@ -59,6 +66,8 @@ type ErrorReport struct {
 	StopReason string
 	// set when invalid data values drop rows rather than being reported
 	DataFailuresDropped bool
+	// the number of rows dropped for invalid data values
+	DroppedRows int
 }
 
 func (report ErrorReport) ContainsErrors() bool {
@@ -123,20 +132,14 @@ func (tracker *ErrorTracker) AddCellError(cellError CellError) {
 	tracker.checkLimit()
 }
 
-// AddReportError records a file or row error.
-func (tracker *ErrorTracker) AddReportError(err string, errType ReportErrorType) {
+// AddRowError records a format error in a row.
+func (tracker *ErrorTracker) AddRowError(rowError RowError) {
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
 	if !tracker.underLimit() {
 		return
 	}
-
-	switch errType {
-	case File:
-		tracker.ErrorReport.FileErrors = append(tracker.ErrorReport.FileErrors, err)
-	case Row:
-		tracker.ErrorReport.RowErrors = append(tracker.ErrorReport.RowErrors, err)
-	}
+	tracker.ErrorReport.RowErrors = append(tracker.ErrorReport.RowErrors, rowError)
 	tracker.checkLimit()
 }
 

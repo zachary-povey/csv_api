@@ -52,7 +52,7 @@ func (report *ErrorReport) ConsoleFormat() string {
 
 		if len(report.RowErrors) > 0 {
 			sections = append(sections,
-				color.RedString("The following malformed rows were detected:\n")+FormatBulletList(report.RowErrors))
+				color.RedString("The following malformed rows were detected:\n")+FormatBulletList(rowErrorStrings(report.RowErrors)))
 		} else if !report.StoppedEarly {
 			sections = append(sections, color.CyanString("No malformed rows were found."))
 		}
@@ -81,6 +81,14 @@ func cellErrorStrings(cellErrors []CellError) []string {
 	strs := make([]string, len(cellErrors))
 	for i, cellError := range cellErrors {
 		strs[i] = cellError.String()
+	}
+	return strs
+}
+
+func rowErrorStrings(rowErrors []RowError) []string {
+	strs := make([]string, len(rowErrors))
+	for i, rowError := range rowErrors {
+		strs[i] = rowError.String()
 	}
 	return strs
 }

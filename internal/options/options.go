@@ -5,7 +5,10 @@ import (
 	"fmt"
 )
 
-const ConsoleErrorReport = "console"
+const (
+	ConsoleErrorReport = "console"
+	JSONErrorReport    = "json"
+)
 
 // Options control how the parse command treats errors. They are run-time
 // choices of the consumer, so they come from command line flags rather than
@@ -19,8 +22,10 @@ type Options struct {
 	MaxErrors int
 	// optional path for a csv of the rows dropped for invalid data
 	DataFailureReport string
-	// where collected errors are reported
+	// where collected errors are reported: console, or json (as well as console)
 	ErrorReport string
+	// with the json error report, the file it is written to
+	ErrorReportPath string
 }
 
 func (opts Options) Validate() error {
@@ -34,8 +39,17 @@ func (opts Options) Validate() error {
 	if opts.DataFailureReport != "" && opts.ErrorOnDataFailures {
 		errs = append(errs, errors.New("--data-failure-report can only be set with --error-on-data-failures=false"))
 	}
-	if opts.ErrorReport != ConsoleErrorReport {
-		errs = append(errs, fmt.Errorf("unsupported --error-report '%s', the only supported value is '%s'", opts.ErrorReport, ConsoleErrorReport))
+	switch opts.ErrorReport {
+	case ConsoleErrorReport:
+		if opts.ErrorReportPath != "" {
+			errs = append(errs, errors.New("--error-report-path can only be set with --error-report=json"))
+		}
+	case JSONErrorReport:
+		if opts.ErrorReportPath == "" {
+			errs = append(errs, errors.New("--error-report=json requires --error-report-path"))
+		}
+	default:
+		errs = append(errs, fmt.Errorf("unsupported --error-report '%s', supported values are '%s' and '%s'", opts.ErrorReport, ConsoleErrorReport, JSONErrorReport))
 	}
 	return errors.Join(errs...)
 }

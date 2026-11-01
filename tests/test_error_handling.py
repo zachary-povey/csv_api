@@ -106,9 +106,9 @@ def test_data_failure_report_requires_dropping_data_failures(build_path):
 
 
 def test_unsupported_error_report(build_path):
-    result = run_fixture(build_path, "data_failures", ["--error-report", "json"])
+    result = run_fixture(build_path, "data_failures", ["--error-report", "xml"])
     assert result.returncode != 0, "Command should have failed"
-    assert "unsupported --error-report 'json'" in result.stderr
+    assert "unsupported --error-report 'xml'" in result.stderr
 
 
 def test_dropped_rows_and_report_with_nullable_fields(build_path):

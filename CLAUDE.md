@@ -27,7 +27,7 @@ CSV → Reader Channel → Parser Channel → Avro Writer → Avro File
 
 - **Config System** (`internal/config`) - YAML-based field definitions with logical types (string, integer, decimal, enum, timestamp, date, time) and regex validation patterns
 - **Error Tracking** (`internal/error_tracking`) - Centralized error collection with file/row/cell level reporting. Closes `KillCh` to stop the pipeline (execution errors, fail-fast, max-errors); the reader stops on it and the parser keeps draining its input so nothing blocks
-- **Options** (`internal/options`) - Error handling flags for `parse` (`--error-on-data-failures`, `--fail-fast`, `--max-errors`, `--data-failure-report`, `--error-report`), documented in README.md
+- **Options** (`internal/options`) - Error handling flags for `parse` (`--error-on-data-failures`, `--fail-fast`, `--max-errors`, `--data-failure-report`, `--error-report` console|json, `--error-report-path`), documented in README.md
 - **Type System** - Each field has representations (regex patterns) that map to logical types with optional arguments
 
 ### Configuration Format

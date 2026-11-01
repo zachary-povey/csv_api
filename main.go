@@ -80,8 +80,13 @@ func main() {
 
 					&cli.StringFlag{
 						Name:  "error-report",
-						Usage: "where to report errors (only 'console' is supported)",
+						Usage: "where to report errors: 'console', or 'json' to also write a json report to --error-report-path",
 						Value: options.ConsoleErrorReport,
+					},
+
+					&cli.PathFlag{
+						Name:  "error-report-path",
+						Usage: "with --error-report=json, the file the json error report is written to",
 					},
 				},
 				Action: func(cCtx *cli.Context) error {
@@ -91,11 +96,20 @@ func main() {
 						MaxErrors:           cCtx.Int("max-errors"),
 						DataFailureReport:   cCtx.Path("data-failure-report"),
 						ErrorReport:         cCtx.String("error-report"),
+						ErrorReportPath:     cCtx.Path("error-report-path"),
 					}
 					if err := opts.Validate(); err != nil {
 						return err
 					}
-					return parse(cCtx.Path("config-path"), cCtx.Path("input-path"), cCtx.Path("output-path"), opts)
+					errorTracker := error_tracking.NewErrorTracker(opts.FailFast, opts.MaxErrors)
+					errorTracker.ErrorReport.DataFailuresDropped = !opts.ErrorOnDataFailures
+					err := parse(cCtx.Path("config-path"), cCtx.Path("input-path"), cCtx.Path("output-path"), opts, errorTracker)
+					if opts.ErrorReport == options.JSONErrorReport {
+						if reportErr := writeJSONReport(opts.ErrorReportPath, errorTracker, err); reportErr != nil {
+							return errors.Join(err, reportErr)
+						}
+					}
+					return err
 				},
 			},
 			{
@@ -164,14 +178,42 @@ func tempFileFor(path string) (*os.File, error) {
 	return file, nil
 }
 
-func parse(configPath string, inputPath string, outputPath string, opts options.Options) error {
+// writeJSONReport writes the json error report for a run that ended with
+// runErr (nil on success). It is written whether or not the run succeeded,
+// atomically, so consumers never see a partial report.
+func writeJSONReport(path string, errorTracker *error_tracking.ErrorTracker, runErr error) error {
+	if runErr != nil && len(errorTracker.ExecutionErrors) == 0 && !errorTracker.ErrorReport.ContainsErrors() {
+		// a failure before or after the pipeline (e.g. the config or input
+		// can't be read, the output can't be moved into place) isn't tracked
+		errorTracker.ExecutionErrors = append(errorTracker.ExecutionErrors, runErr)
+	}
+	content, err := errorTracker.JSONFormat(runErr == nil)
+	if err != nil {
+		return fmt.Errorf("error writing error report: %w", err)
+	}
+	file, err := tempFileFor(path)
+	if err != nil {
+		return fmt.Errorf("error creating error report '%s': %w", path, err)
+	}
+	defer os.Remove(file.Name()) // no-op once renamed
+	_, err = file.Write(append(content, '\n'))
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Rename(file.Name(), path)
+	}
+	if err != nil {
+		return fmt.Errorf("error writing error report '%s': %w", path, err)
+	}
+	return nil
+}
+
+func parse(configPath string, inputPath string, outputPath string, opts options.Options, errorTracker *error_tracking.ErrorTracker) error {
 	config, err := config.LoadConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to read config: %w", err)
 	}
-
-	errorTracker := error_tracking.NewErrorTracker(opts.FailFast, opts.MaxErrors)
-	errorTracker.ErrorReport.DataFailuresDropped = !opts.ErrorOnDataFailures
 
 	dataReader, executionErr, fileErrs := reader.Open(inputPath, config)
 	if executionErr != nil {
@@ -235,6 +277,7 @@ func parse(configPath string, inputPath string, outputPath string, opts options.
 	go avro_writer.WriteFile(outputFile.Name(), config, outputChan, &waitGroup, errorTracker)
 
 	waitGroup.Wait()
+	errorTracker.ErrorReport.DroppedRows = dataParser.DroppedRows
 
 	if dataFailureWriter != nil {
 		dataFailureWriter.Flush()

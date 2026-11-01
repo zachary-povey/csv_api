@@ -52,6 +52,8 @@ type Parser struct {
 	representations [][]compiledRepresentation
 	// how each field's column is named in errors, in config order
 	columnLabels []string
+	// the header of each field's column, in config order ("" if missing)
+	columnNames []string
 	// optional destination for rows dropped for invalid data
 	dataFailureWriter *csv.Writer
 
@@ -81,6 +83,7 @@ func NewParser(conf *config.Config, opts options.Options, dataFailureWriter *csv
 		opts:              opts,
 		representations:   representations,
 		columnLabels:      columnLabels,
+		columnNames:       columnNames,
 		dataFailureWriter: dataFailureWriter,
 	}, nil
 }
@@ -151,6 +154,7 @@ func (p *Parser) ParseData(input_channel chan reader.Record, output_channel chan
 				failures = append(failures, error_tracking.CellError{
 					Row:     row.Line,
 					Column:  p.columnLabels[i],
+					Header:  p.columnNames[i],
 					Field:   p.config.Fields[i].Name,
 					Value:   *value,
 					Reason:  err.Error(),

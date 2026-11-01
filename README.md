@@ -101,9 +101,10 @@ These flags control how errors are handled. They are choices for whoever runs th
 | `--fail-fast` | `true` | Stop at the first error. If `false`, keep going and report every error found. |
 | `--max-errors` | no limit | With `--fail-fast=false`, stop after collecting this many errors. Dropped rows don't count as errors. |
 | `--data-failure-report` | none | With `--error-on-data-failures=false`, write the dropped rows to this csv file: the original header and values, plus a `__csv_api_error__` column listing every failed value in the row (with the field's `error_message`, if it has one). |
-| `--error-report` | `console` | Where errors are reported. Only `console` is supported for now. |
+| `--error-report` | `console` | Where errors are reported: `console`, or `json` to also write a JSON report to `--error-report-path` (see [JSON error report](#json-error-report)). The console report always goes to stderr. |
+| `--error-report-path` | none | With `--error-report=json`, the file the JSON report is written to. Required with `json`. |
 
-Boolean flags are turned off with `=false`, e.g. `--fail-fast=false`. Setting `--max-errors` with fail-fast on, or `--data-failure-report` while erroring on data failures, is rejected.
+Boolean flags are turned off with `=false`, e.g. `--fail-fast=false`. Setting `--max-errors` with fail-fast on, `--data-failure-report` while erroring on data failures, `--error-report=json` without `--error-report-path`, or `--error-report-path` without `--error-report=json`, is rejected.
 
 ```sh
 # report every problem in the file
@@ -115,6 +116,45 @@ Boolean flags are turned off with `=false`, e.g. `--fail-fast=false`. Setting `-
 ```
 
 A broken quote stops processing even with `--fail-fast=false`, since the rows after it can't be located reliably.
+
+#### JSON error report
+
+With `--error-report json --error-report-path errors.json`, a report other systems can consume (e.g. to raise a ticket or alert the producer) is written to `errors.json`. It is written on every run, successful or not (a successful run has `"valid": true` and no errors), so consumers can always rely on finding it. Like the output, it is written to a temporary file and moved into place, so a partial report is never seen. Invalid flags are the exception: they are rejected before the run starts, and no report is written.
+
+```json
+{
+  "valid": false,
+  "stopped_early": true,
+  "stop_reason": "fail-fast is on",
+  "dropped_rows": 0,
+  "errors": [
+    {
+      "group": "data",
+      "row": 2,
+      "column": "id",
+      "field": "id",
+      "value": "x",
+      "reason": "value 'x' did not match any pattern",
+      "message": null
+    }
+  ]
+}
+```
+
+| Key | Description |
+| --- | --- |
+| `valid` | Whether the run succeeded (and the output was written). |
+| `stopped_early` | Whether processing stopped before the whole file was checked. |
+| `stop_reason` | Why it stopped early, e.g. `fail-fast is on`, `--max-errors (2) was reached`; `null` if it didn't. |
+| `dropped_rows` | Rows dropped for invalid data with `--error-on-data-failures=false`. |
+| `errors` | One entry per error, as below. Every key is always present; keys that don't apply to the error are `null`. |
+| `errors[].group` | `execution` (e.g. the input can't be opened), `file` (a header problem; no rows are checked), `row` (e.g. a row with the wrong number of values) or `data` (a data failure). |
+| `errors[].row` | Line number of the row in the file (`row` and `data` errors). |
+| `errors[].column` | Header of the column, as in the file (`data` errors). |
+| `errors[].field` | The config field the column was read for (`data` errors). |
+| `errors[].value` | The raw value from the file (`data` errors). |
+| `errors[].reason` | What is wrong. |
+| `errors[].message` | The field's `error_message` from the config, if it has one (`data` errors). |
 
 ## Configuration
 
@@ -321,4 +361,4 @@ All the usual checks run on the merged config. For example, an `is_null` represe
 
 These are intended but not built yet. Work is tracked as tasks with [Backlog.md](https://github.com/MrLesk/Backlog.md) in `backlog/` (run `backlog board` or `backlog task list`).
 
-- streaming output to stdout, Parquet output, and a structured (json) `--error-report`
+- streaming output to stdout and Parquet output
