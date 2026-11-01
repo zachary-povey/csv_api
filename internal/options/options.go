@@ -8,6 +8,9 @@ import (
 const (
 	ConsoleErrorReport = "console"
 	JSONErrorReport    = "json"
+
+	AvroOutputFormat    = "avro"
+	ParquetOutputFormat = "parquet"
 )
 
 // Options control how the parse command writes output and treats errors.
@@ -16,6 +19,8 @@ const (
 type Options struct {
 	// where the output is written; with Stream, empty means stdout
 	OutputPath string
+	// the output file format: avro or parquet
+	OutputFormat string
 	// write output as rows are validated rather than all or nothing; a failed
 	// run leaves incomplete output
 	Stream bool
@@ -37,6 +42,15 @@ func (opts Options) Validate() error {
 	var errs []error
 	if opts.OutputPath == "" && !opts.Stream {
 		errs = append(errs, errors.New("--output-path is required (it can only be left out with --stream, to write to stdout)"))
+	}
+	switch opts.OutputFormat {
+	case AvroOutputFormat:
+	case ParquetOutputFormat:
+		if opts.Stream {
+			errs = append(errs, errors.New("--stream can't be used with --output-format=parquet: a Parquet file can only be read once its footer is written at the end, so it can't be streamed"))
+		}
+	default:
+		errs = append(errs, fmt.Errorf("unsupported --output-format '%s', supported values are '%s' and '%s'", opts.OutputFormat, AvroOutputFormat, ParquetOutputFormat))
 	}
 	if opts.MaxErrors < 0 {
 		errs = append(errs, errors.New("--max-errors must be a positive number"))

@@ -259,7 +259,8 @@ def test_readme_documents_stream():
     assert "--stream" in section
     assert "incomplete" in section
     assert "exit code" in section
-    planned = readme.split("## Planned", 1)[1]
+    # the Planned section is gone once nothing is left in it (TASK-13)
+    planned = readme.split("## Planned", 1)[1] if "## Planned" in readme else ""
     assert "stream" not in planned.lower()
 
 

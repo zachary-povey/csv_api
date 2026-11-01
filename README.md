@@ -61,7 +61,7 @@ Build the binary (written to `build/csv-api`):
 ./scripts/build.sh
 ```
 
-Validate a csv file against a config and convert it to Avro:
+Validate a csv file against a config and convert it to Avro (or Parquet, see [Output format](#output-format)):
 
 ```sh
 ./build/csv-api parse --config-path config.yaml --input-path data.csv --output-path data.avro
@@ -70,6 +70,20 @@ Validate a csv file against a config and convert it to Avro:
 ```
 
 The command exits non-zero and prints an error report if the file does not match the config. A failed run never leaves an output file behind (unless `--stream` is used, see below).
+
+#### Output format
+
+The output is Avro by default. Add `--output-format parquet` to write Parquet instead:
+
+```sh
+./build/csv-api parse -c config.yaml -i data.csv -o data.parquet --output-format parquet
+```
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--output-format` | `avro` | `avro` (an Avro object container file) or `parquet`. Both hold the same values with equivalent types, see [Logical types and type args](#logical-types-and-type-args). |
+
+The format is always chosen with the flag, never from the output file's extension. Like the error handling flags, it is a choice for whoever runs the tool, so the same config can produce either format. A Parquet file is written with one column per config field, in config order, and the config's `name` as the schema name.
 
 #### Streaming output
 
@@ -81,6 +95,7 @@ By default the output is all or nothing: it is written to a temporary file and o
 
 The trade-off: rows are emitted before the rest of the file has been checked, so when a run fails the output written so far is incomplete (it may be empty, or stop part way through). The run still exits non-zero and stderr ends with a line saying the output is incomplete. **Consumers must check the exit code** and discard the output of a failed run. (In a shell pipeline, use `set -o pipefail` or check `PIPESTATUS`, since a pipeline's exit status is otherwise the last command's.)
 
+- `--stream` only works with Avro output. `--stream --output-format parquet` is rejected before the run starts, since a Parquet file can't be read until its footer is written at the very end.
 - The Avro header is always written first, so stdout is valid Avro even when no rows pass.
 - Stdout carries only the Avro output. Errors, warnings, the incomplete-output message, and help and usage errors from the command line go to stderr.
 - `--stream` with `--output-path` writes that file in place as rows are validated (no temporary file), so a failed run leaves the incomplete file behind. To stream to stdout, leave out `--output-path` (`-o -` is not treated as stdout).
@@ -216,7 +231,7 @@ fields:
 
 ### Name
 
-`name` is required and becomes the name of the Avro record in the output schema, so downstream consumers see a meaningful schema name. It must be a valid Avro name: it starts with a letter or underscore and contains only letters, digits and underscores. It may be a dotted fullname such as `com.example.orders`, in which case the parts before the last dot are the Avro namespace (enum types in the schema, which are named after their field, share that namespace). Because of that, an enum field can't have the same name as the last part of `name`. A missing or invalid name fails the config load.
+`name` is required and becomes the name of the Avro record in the output schema (and the schema name of Parquet output), so downstream consumers see a meaningful schema name. It must be a valid Avro name: it starts with a letter or underscore and contains only letters, digits and underscores. It may be a dotted fullname such as `com.example.orders`, in which case the parts before the last dot are the Avro namespace (enum types in the schema, which are named after their field, share that namespace). Because of that, an enum field can't have the same name as the last part of `name`. A missing or invalid name fails the config load.
 
 ### Fields
 
@@ -297,18 +312,20 @@ row 3, column 'amount': value '12.5' did not match any pattern (note: amount mus
 
 The config is checked strictly when it loads: an unknown key anywhere in it (including under `logical_type` or its `args`, e.g. a typo like `permited_values`) or a missing or conflicting type arg fails the run, and `validate_config` reports it with the field name. A representation's `args` are value args handed to the converter, and are checked against the logical type's value args (see [Representations](#representations)).
 
-| Type | Type args | Avro output |
-| --- | --- | --- |
-| `string` | | `string` |
-| `integer` | | `long` |
-| `decimal` | `precision` and `scale`, or `as_float: true` | `bytes` with `decimal` logical type, or `double` if `as_float` |
-| `enum` | `permitted_values` (required) | `enum` named after the field |
-| `date` | | `int` with `date` logical type |
-| `time` | | `long` with `time-micros` logical type |
-| `timestamp` | | `long` with `timestamp-micros` logical type (UTC) |
-| `boolean` | | `boolean` |
+| Type | Type args | Avro output | Parquet output |
+| --- | --- | --- | --- |
+| `string` | | `string` | `BYTE_ARRAY` with `STRING` logical type |
+| `integer` | | `long` | `INT64` with `INT(64, signed)` logical type |
+| `decimal` | `precision` and `scale`, or `as_float: true` | `bytes` with `decimal` logical type, or `double` if `as_float` | `BYTE_ARRAY` with `DECIMAL(precision, scale)` logical type, or `DOUBLE` if `as_float` |
+| `enum` | `permitted_values` (required) | `enum` named after the field | `BYTE_ARRAY` with `ENUM` logical type |
+| `date` | | `int` with `date` logical type | `INT32` with `DATE` logical type |
+| `time` | | `long` with `time-micros` logical type | `INT64` with `TIME(MICROS)` logical type, not adjusted to UTC (a local time of day) |
+| `timestamp` | | `long` with `timestamp-micros` logical type (UTC) | `INT64` with `TIMESTAMP(MICROS)` logical type, adjusted to UTC |
+| `boolean` | | `boolean` | `BOOLEAN` |
 
-A field with `nullable: true` is written as a union of `null` and the type above (e.g. `["null", "long"]`), with a default of `null`.
+A field with `nullable: true` is written as a union of `null` and the type above (e.g. `["null", "long"]`), with a default of `null`. In Parquet it is an `OPTIONAL` column; every other column is `REQUIRED`.
+
+Parquet's `ENUM` logical type has no list of values, so unlike the Avro schema, the Parquet schema doesn't record an enum's `permitted_values` (the values are still checked when the file is parsed). Some readers, such as pyarrow, read `ENUM` columns as binary rather than text.
 
 ### Representations
 
@@ -389,8 +406,6 @@ Each entry under `fields` needs only a `name`, matched to a field of the base, p
 
 All the usual checks run on the merged config. For example, an `is_null` representation added to a field that the root doesn't make nullable fails the load, as does `required: false` on such a field. Use `validate_config --print-merged` to see the config a producer's file results in.
 
-## Planned
+## Roadmap
 
-These are intended but not built yet. Work is tracked as tasks with [Backlog.md](https://github.com/MrLesk/Backlog.md) in `backlog/` (run `backlog board` or `backlog task list`).
-
-- Parquet output
+Planned work is tracked as tasks with [Backlog.md](https://github.com/MrLesk/Backlog.md) in `backlog/` (run `backlog board` or `backlog task list`).

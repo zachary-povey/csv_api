@@ -11,23 +11,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-This is a CSV validation and Avro conversion tool with a concurrent pipeline architecture:
+This is a CSV validation and Avro/Parquet conversion tool with a concurrent pipeline architecture:
 
 1. **Reader** (`internal/reader`) - Reads CSV files and validates headers against config
 2. **Parser** (`internal/parser`) - Validates data using regex patterns and converts types
-3. **Avro Writer** (`internal/avro_writer`) - Generates Avro schema and writes output
+3. **Avro Writer** (`internal/avro_writer`) or **Parquet Writer** (`internal/parquet_writer`) - Generates the output schema and writes output. Both have the same `Write(io.Writer, config, channel, wg, errTracker)` signature; `main.go` picks one from `--output-format` (default `avro`). Parquet uses `github.com/parquet-go/parquet-go`, keeps config field order, and can't be used with `--stream` (its footer is written at the end)
 
 The main processing flow uses Go channels for concurrent execution:
 
 ```
-CSV → Reader Channel → Parser Channel → Avro Writer → Avro File
+CSV → Reader Channel → Parser Channel → Avro/Parquet Writer → Avro/Parquet File
 ```
 
 ### Key Components
 
 - **Config System** (`internal/config`) - YAML-based field definitions with logical types (string, integer, decimal, enum, timestamp, date, time) and regex validation patterns
 - **Error Tracking** (`internal/error_tracking`) - Centralized error collection with file/row/cell level reporting. Closes `KillCh` to stop the pipeline (execution errors, fail-fast, max-errors); the reader stops on it and the parser keeps draining its input so nothing blocks
-- **Options** (`internal/options`) - Output and error handling flags for `parse` (`--stream`, `--error-on-data-failures`, `--fail-fast`, `--max-errors`, `--data-failure-report`, `--error-report` console|json, `--error-report-path`), documented in README.md
+- **Options** (`internal/options`) - Output and error handling flags for `parse` (`--output-format` avro|parquet, `--stream`, `--error-on-data-failures`, `--fail-fast`, `--max-errors`, `--data-failure-report`, `--error-report` console|json, `--error-report-path`), documented in README.md
 - **Type System** - Each field has representations (regex patterns) that map to logical types with optional arguments
 
 ### Configuration Format
@@ -71,7 +71,12 @@ To add a new logical type to the system, you need to update several components:
   - Complex types: return JSON object with type and logical type info
   - For decimal types: distinguish between float (`"double"`) and precise decimal with bytes+logicalType
 
-### 4. Testing
+### 4. Parquet Writer (`internal/parquet_writer/parquet_writer.go`)
+- Add a case to `columnNode()` returning the Parquet leaf node equivalent to the Avro type (physical + logical type)
+- Add a case to `columnValue()` converting the parser's value to a `parquet.Value`
+- Add the type to `tests/fixtures/parquet_all_types` and the expectations in `tests/test_parquet_output.py`
+
+### 5. Testing
 - Add comprehensive tests in `tests/test_logical_types.py` covering:
   - Valid conversions with different parameter sets
   - Mixed types in same dataset
@@ -81,7 +86,8 @@ To add a new logical type to the system, you need to update several components:
 ### Type Implementation Notes
 - **Parameter Extraction**: Use type assertions with proper error handling for `args` map
 - **Error Messages**: Include context about which parameter failed and why
-- **Avro Compatibility**: Ensure converted values match expected Avro schema types
+- **Avro/Parquet Compatibility**: Ensure converted values match expected Avro schema types, and that both writers hold the same values
+- **Docs**: Add the type to the README type table (Avro and Parquet columns)
 - **Logical Types**: For Avro logical types (decimal, timestamp, etc.), implement proper encoding (e.g., decimal as scaled integer bytes)
 
 <!-- BACKLOG.MD GUIDELINES START -->

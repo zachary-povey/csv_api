@@ -18,6 +18,7 @@ import (
 	"github.com/zachary-povey/csv_api/internal/config"
 	"github.com/zachary-povey/csv_api/internal/error_tracking"
 	"github.com/zachary-povey/csv_api/internal/options"
+	"github.com/zachary-povey/csv_api/internal/parquet_writer"
 	"github.com/zachary-povey/csv_api/internal/parser"
 	"github.com/zachary-povey/csv_api/internal/reader"
 )
@@ -35,8 +36,8 @@ func main() {
 		Commands: []*cli.Command{
 			{
 				Name:        "parse",
-				Usage:       "Validates a csv file and extracts it into avro.",
-				Description: "Validates a csv file and extracts it into avro.",
+				Usage:       "Validates a csv file and converts it to avro or parquet.",
+				Description: "Validates a csv file and converts it to avro or parquet.",
 				Flags: []cli.Flag{
 					&cli.PathFlag{
 						Name:     "config-path",
@@ -56,6 +57,12 @@ func main() {
 						Name:    "output-path",
 						Aliases: []string{"o"},
 						Usage:   "output file path; with --stream it can be left out to write to stdout",
+					},
+
+					&cli.StringFlag{
+						Name:  "output-format",
+						Usage: "the output file format: 'avro' or 'parquet'",
+						Value: options.AvroOutputFormat,
 					},
 
 					&cli.BoolFlag{
@@ -99,6 +106,7 @@ func main() {
 				Action: func(cCtx *cli.Context) error {
 					opts := options.Options{
 						OutputPath:          cCtx.Path("output-path"),
+						OutputFormat:        cCtx.String("output-format"),
 						Stream:              cCtx.Bool("stream"),
 						ErrorOnDataFailures: cCtx.Bool("error-on-data-failures"),
 						FailFast:            cCtx.Bool("fail-fast"),
@@ -221,7 +229,7 @@ func writeJSONReport(path string, errorTracker *error_tracking.ErrorTracker, run
 	return nil
 }
 
-// openOutput opens the avro output. Without --stream it is a temporary file,
+// openOutput opens the output. Without --stream it is a temporary file,
 // moved into place by commit once the run has succeeded. With --stream it is
 // the output itself, written as rows are validated: stdout, or the output
 // path written in place; commit does nothing.
@@ -274,7 +282,7 @@ func parse(configPath string, inputPath string, opts options.Options, errorTrack
 
 	// outputs are written to temporary files and only moved into place if the
 	// run succeeds, so a failed run never leaves output behind (except the
-	// avro output with --stream, see openOutput)
+	// output with --stream, see openOutput)
 	tempPaths := []string{}
 	committed := false
 	defer func() {
@@ -320,7 +328,11 @@ func parse(configPath string, inputPath string, opts options.Options, errorTrack
 
 	go dataReader.ReadRows(inputChan, &waitGroup, errorTracker)
 	go dataParser.ParseData(inputChan, outputChan, &waitGroup, errorTracker)
-	go avro_writer.Write(output, config, outputChan, &waitGroup, errorTracker)
+	writeOutput := avro_writer.Write
+	if opts.OutputFormat == options.ParquetOutputFormat {
+		writeOutput = parquet_writer.Write
+	}
+	go writeOutput(output, config, outputChan, &waitGroup, errorTracker)
 
 	waitGroup.Wait()
 	if err := closeOutput(); err != nil {
