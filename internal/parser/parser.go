@@ -40,8 +40,9 @@ func extract_args(rgx *regexp.Regexp, value string) (bool, map[string]string) {
 }
 
 type compiledRepresentation struct {
-	regex *regexp.Regexp
-	args  map[string]any
+	regex  *regexp.Regexp
+	args   map[string]any
+	isNull bool
 }
 
 // Parser validates and converts rows from the reader.
@@ -66,7 +67,7 @@ func NewParser(conf *config.Config, opts options.Options, dataFailureWriter *csv
 			if err != nil {
 				return nil, fmt.Errorf("error parsing regex for field '%s': %w", field.Name, err)
 			}
-			representations[i] = append(representations[i], compiledRepresentation{rgx, rep.Args})
+			representations[i] = append(representations[i], compiledRepresentation{rgx, rep.Args, rep.IsNull})
 		}
 	}
 	return &Parser{
@@ -78,7 +79,8 @@ func NewParser(conf *config.Config, opts options.Options, dataFailureWriter *csv
 }
 
 // parseValue resolves a single cell against its field's representations and
-// converts it to the field's logical type.
+// converts it to the field's logical type. A nil result with no error is a
+// null (only possible on nullable fields, checked at config load).
 func (p *Parser) parseValue(fieldIndex int, value string) (any, error) {
 	field := p.config.Fields[fieldIndex]
 
@@ -86,6 +88,9 @@ func (p *Parser) parseValue(fieldIndex int, value string) (any, error) {
 		matched, args := extract_args(rep.regex, value)
 		if !matched {
 			continue
+		}
+		if rep.isNull {
+			return nil, nil
 		}
 
 		// merge args from regex with static ones on representation
@@ -117,6 +122,12 @@ func (p *Parser) ParseData(input_channel chan reader.Record, output_channel chan
 
 		// check every cell so a dropped row reports all of its problems
 		for i, value := range row.Values {
+			if value == nil {
+				// a missing column (only non-required fields may be
+				// missing): the field is null
+				resolvedRow[p.config.Fields[i].Name] = nil
+				continue
+			}
 			parsed_value, err := p.parseValue(i, *value)
 			if err != nil {
 				failures = append(failures, err.Error())

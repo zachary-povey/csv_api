@@ -160,6 +160,19 @@ fields:
 
 `fields` is a list, and its order sets the order of fields in the output schema. A field is matched to a csv column by an exact header match on `name`. Columns in the file that are not in the config are ignored.
 
+Fields are not nullable by default: every value must resolve to a value of the field's type. Set `nullable: true` on a field to allow nulls. Nulls only come from representations marked `is_null: true` (see [Representations](#representations)), so the producer's null placeholders (`-`, `N/A`, an empty string, ...) are spelled out in the config. An empty cell on a nullable field is not null unless an `is_null` representation matches it; otherwise it fails like any other unmatched value.
+
+```yaml
+  - name: discount
+    nullable: true
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^(-|N/A|)$" # "-", "N/A" or an empty cell
+        is_null: true
+      - pattern: "^[0-9]+$"
+```
+
 ### Logical types and type args
 
 `logical_type.name` is one of the types below. Some types take `args` under `logical_type`. These are settings that must be the same for every value in the column (such as decimal precision or the permitted values of an enum), so they live on the type rather than on a representation.
@@ -175,6 +188,8 @@ The config is checked strictly when it loads: an unknown key anywhere in it (inc
 | `date` | | `int` with `date` logical type |
 | `time` | | `long` with `time-micros` logical type |
 | `timestamp` | | `long` with `timestamp-micros` logical type (UTC) |
+
+A field with `nullable: true` is written as a union of `null` and the type above (e.g. `["null", "long"]`), with a default of `null`.
 
 ### Representations
 
@@ -196,7 +211,9 @@ The value args each type accepts:
 | `time` | `hour`, `minute`, `second`, `millisecond`, `microsecond` (all optional, default 0) |
 | `timestamp` | `value` and `precision` (`seconds`, `milliseconds` or `microseconds`), with optional `offset`; or `year`, `month`, `day` with optional `hour`, `minute`, `second`, `millisecond`, `microsecond` and `timezone` (e.g. `+01:00`) |
 
-When the config loads, each representation is checked against this table: the args from its capture groups and static `args` must form one of the type's arg sets, with nothing missing and no unknown names (e.g. a `date` pattern with a `yr` group fails). Static arg values are checked too where they can be on their own: integer-valued args must be whole numbers, an `enum` `value` must be in `permitted_values`, and a timestamp `precision` or `timezone` must be valid. A failed check names the field and pattern, and `validate_config` reports it. Representations with `is_null: true` are not checked, since they provide no value args.
+When the config loads, each representation is checked against this table: the args from its capture groups and static `args` must form one of the type's arg sets, with nothing missing and no unknown names (e.g. a `date` pattern with a `yr` group fails). Static arg values are checked too where they can be on their own: integer-valued args must be whole numbers, an `enum` `value` must be in `permitted_values`, and a timestamp `precision` or `timezone` must be valid. A failed check names the field and pattern, and `validate_config` reports it. Representations with `is_null: true` are checked separately (below), since they provide no value args.
+
+A representation with `is_null: true` makes a matching value null instead of handing args to a converter. It is only allowed on a field with `nullable: true`, and since it provides no value args it can't have static `args` or named capture groups (unnamed groups such as `^(-|N/A)$` are fine). Breaking either rule fails the config load, naming the field. Like any representation it is tried in order, so put it before a broader pattern that would also match the placeholder.
 
 At run time the converters check that the args make a valid value (e.g. a real calendar date, or a captured enum value in `permitted_values`), and report a cell error if not.
 
@@ -207,7 +224,6 @@ These are intended but not built yet. Work is tracked as tasks with [Backlog.md]
 - `header_patterns`: regex matching of csv headers to fields, instead of an exact match on `name`
 - `allow_extra_fields`: option to reject columns not in the config (currently they are always ignored)
 - `required`: per-field option to allow a column to be missing (currently every field is required)
-- `nullable` and `is_null`: allow null values, with representations that resolve to null (`is_null` is accepted in config but has no effect yet)
 - layered config files: a shared base config with per-producer overrides merged on top (`-c base.yaml -c partner.yaml`)
 - per-field error messages: an optional message in the config, shown when a field's values fail
 - streaming output to stdout, Parquet output, and a structured (json) `--error-report`

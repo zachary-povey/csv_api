@@ -1,0 +1,80 @@
+name: com.example.nullables
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  - name: label
+    nullable: true
+    logical_type:
+      name: string
+    representations:
+      - pattern: "^(-|N/A)$"
+        is_null: true
+      - pattern: "^(.+)$"
+  - name: count
+    nullable: true
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^-$"
+        is_null: true
+      - pattern: "^[0-9]+$"
+  - name: price
+    nullable: true
+    logical_type:
+      name: decimal
+      args:
+        precision: 10
+        scale: 2
+    representations:
+      - pattern: "^-$"
+        is_null: true
+      - pattern: "^([0-9]+\\.[0-9]{2})$"
+  - name: ratio
+    nullable: true
+    logical_type:
+      name: decimal
+      args:
+        as_float: true
+    representations:
+      - pattern: "^-$"
+        is_null: true
+      - pattern: "^([0-9]+\\.[0-9]+)$"
+  - name: status
+    nullable: true
+    logical_type:
+      name: enum
+      args:
+        permitted_values: [open, closed]
+    representations:
+      - pattern: "^-$"
+        is_null: true
+      - pattern: "^(open|closed)$"
+  - name: day
+    nullable: true
+    logical_type:
+      name: date
+    representations:
+      - pattern: "^-$"
+        is_null: true
+      - pattern: "^(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})$"
+  - name: at
+    nullable: true
+    logical_type:
+      name: time
+    representations:
+      - pattern: "^-$"
+        is_null: true
+      - pattern: "^(?P<hour>[0-9]{2}):(?P<minute>[0-9]{2})$"
+  - name: seen
+    nullable: true
+    logical_type:
+      name: timestamp
+    representations:
+      - pattern: "^-$"
+        is_null: true
+      - pattern: "^(?P<value>[0-9]+)$"
+        args:
+          precision: seconds

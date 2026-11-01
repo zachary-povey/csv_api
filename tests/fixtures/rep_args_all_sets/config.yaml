@@ -25,6 +25,7 @@ fields:
         args:
           value: red
   - name: d
+    nullable: true # allows the is_null representation below (TASK-7)
     logical_type:
       name: date
     representations:

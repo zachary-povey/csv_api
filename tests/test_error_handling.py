@@ -1,3 +1,5 @@
+import decimal
+
 from tests.utils import run_fixture
 
 DATA_ROWS = 40
@@ -107,3 +109,22 @@ def test_unsupported_error_report(build_path):
     result = run_fixture(build_path, "data_failures", ["--error-report", "json"])
     assert result.returncode != 0, "Command should have failed"
     assert "unsupported --error-report 'json'" in result.stderr
+
+
+def test_dropped_rows_and_report_with_nullable_fields(build_path):
+    """TASK-7 AC#2: null values pass through alongside dropped rows; the data
+    failure report keeps the raw values of rows that contain a null."""
+    result = run_fixture(
+        build_path, "nullable_dropped_rows", DROP_DATA_FAILURES, data_failure_report=True
+    )
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    assert [(r["id"], r["amount"]) for r in result.records] == [
+        (1, None),
+        (3, decimal.Decimal("2.50")),
+    ]
+    assert "dropped 2 row(s)" in result.stderr
+    header, *rows = result.data_failure_rows
+    assert header == ["id", "amount", "__csv_api_error__"]
+    assert [row[:2] for row in rows] == [["x", "N/A"], ["4", "bad"]]
+    assert "column 'id'" in rows[0][2]
+    assert "column 'amount': value 'bad'" in rows[1][2]

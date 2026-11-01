@@ -36,7 +36,8 @@ A config has a required top-level `name` (a valid Avro name, used as the output 
 
 - `name`: Field identifier
 - `logical_type`: Type definition (name + optional args for decimals/enums)
-- `representations`: Array of regex patterns, tried in order (first match wins). Named capture groups and static `args` supply the type's value args; static args win on overlap. See README.md for the full reference.
+- `nullable`: optional, default false; makes the Avro type a union with null
+- `representations`: Array of regex patterns, tried in order (first match wins). Named capture groups and static `args` supply the type's value args; static args win on overlap. A representation with `is_null: true` resolves to null (nullable fields only). See README.md for the full reference.
 
 The pipeline processes data concurrently using goroutines and channels. The reader checks the header synchronously before the goroutines start. Output (and the optional data failure report) is written to temporary files that are only renamed into place when the run succeeds.
 

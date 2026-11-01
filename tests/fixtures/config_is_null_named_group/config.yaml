@@ -1,0 +1,10 @@
+name: strict
+fields:
+  - name: count
+    nullable: true
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^(?P<value>-)$"
+        is_null: true
+      - pattern: "^[0-9]+$"

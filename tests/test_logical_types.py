@@ -437,3 +437,82 @@ def test_all_new_types_mixed(build_path):
     assert bob["shift_start"] == datetime.time(8, 30, 0)
     ts_bob = bob["last_login"]
     assert ts_bob.replace(tzinfo=None) == datetime.datetime(2024, 3, 14, 17, 45, 0)
+
+
+# --- TASK-7: nullable fields and is_null representations ---
+
+NULLABLE_FIELDS = ["label", "count", "price", "ratio", "status", "day", "at", "seen"]
+
+
+def test_nullable_fields_are_unions_with_null(build_path):
+    """TASK-7 AC#1: a nullable field's Avro type is ["null", <type>] with a
+    null default, for every logical type; a field without nullable stays a
+    plain (non-union) type."""
+    result = run_fixture(build_path, "nullable_all_types")
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    fields = {f["name"]: f for f in result.writer_schema["fields"]}
+    assert fields["id"]["type"] == "long"
+    assert "default" not in fields["id"]
+    for name in NULLABLE_FIELDS:
+        field_type = fields[name]["type"]
+        assert isinstance(field_type, list) and field_type[0] == "null", name
+        assert len(field_type) == 2, name
+        assert fields[name]["default"] is None, name
+    assert fields["label"]["type"][1] == "string"
+    assert fields["count"]["type"][1] == "long"
+    assert fields["price"]["type"][1]["logicalType"] == "decimal"
+    assert fields["ratio"]["type"][1] == "double"
+    assert fields["status"]["type"][1]["name"] == "com.example.status"
+    assert fields["day"]["type"][1]["logicalType"] == "date"
+    assert fields["at"]["type"][1]["logicalType"] == "time-micros"
+    assert fields["seen"]["type"][1]["logicalType"] == "timestamp-micros"
+
+
+def test_nullable_fields_write_null_and_non_null_values(build_path):
+    """TASK-7 AC#1, AC#2: every logical type, when nullable, writes non-null
+    values through the union and writes null where an is_null representation
+    matches (including an is_null pattern with an unnamed group, "^(-|N/A)$")."""
+    result = run_fixture(build_path, "nullable_all_types")
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    first, nulls, third = result.records
+    assert first == {
+        "id": 1,
+        "label": "hello",
+        "count": 5,
+        "price": decimal.Decimal("12.34"),
+        "ratio": 0.5,
+        "status": "open",
+        "day": datetime.date(2024, 3, 15),
+        "at": datetime.time(9, 30),
+        "seen": datetime.datetime(2023, 11, 14, 22, 13, 20, tzinfo=datetime.timezone.utc),
+    }
+    # AC#2: "-" matches each field's is_null representation
+    assert nulls == {"id": 2, **{name: None for name in NULLABLE_FIELDS}}
+    assert third["label"] is None  # "N/A" also matches the label's is_null pattern
+    assert third["count"] == 7
+    assert third["price"] == decimal.Decimal("1.00")
+    assert third["ratio"] == 1.25
+    assert third["status"] == "closed"
+    assert third["day"] == datetime.date(1970, 1, 2)
+    assert third["at"] == datetime.time(0, 1)
+    assert third["seen"] == datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+
+
+def test_nullable_enum_without_namespace(build_path):
+    """TASK-7 AC#1, AC#2: a nullable enum in a config with no namespace, with
+    an is_null representation matching the empty string."""
+    result = run_fixture(build_path, "nullable_unnamespaced_enum")
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    assert result.writer_schema["fields"][0]["type"][1]["name"] == "status"
+    assert [r["status"] for r in result.records] == ["open", None, "closed"]
+
+
+def test_empty_cell_on_nullable_field_without_null_representation_fails(build_path):
+    """TASK-7 (decision): nulls only come from is_null representations; an
+    empty cell on a nullable field that matches no representation is a data
+    failure like any other unmatched value."""
+    result = run_fixture(build_path, "nullable_empty_cell_unmatched", ["--fail-fast=false"])
+    assert result.returncode != 0, "Command should have failed"
+    assert not result.output_exists
+    assert "row 3, column 'count': value '' did not match any pattern" in result.stderr
+    assert "row 4" not in result.stderr

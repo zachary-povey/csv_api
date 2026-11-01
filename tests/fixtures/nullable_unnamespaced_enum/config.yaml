@@ -1,0 +1,12 @@
+name: orders
+fields:
+  - name: status
+    nullable: true
+    logical_type:
+      name: enum
+      args:
+        permitted_values: [open, closed]
+    representations:
+      - pattern: "^$"
+        is_null: true
+      - pattern: "^(open|closed)$"

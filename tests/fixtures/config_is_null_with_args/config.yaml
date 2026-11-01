@@ -1,0 +1,12 @@
+name: strict
+fields:
+  - name: count
+    nullable: true
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^-$"
+        is_null: true
+        args:
+          value: 0
+      - pattern: "^[0-9]+$"

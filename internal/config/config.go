@@ -20,6 +20,9 @@ type FieldConfig struct {
 	Name              string            `yaml:"name"`
 	LogicalTypeConfig LogicalTypeConfig `yaml:"-"`
 	Representations   []Representation  `yaml:"representations"`
+	// Nullable fields may hold null (written to Avro as a union with null).
+	// Only nullable fields may have is_null representations.
+	Nullable bool `yaml:"nullable"`
 
 	RawLogicalTypeConfig map[string]any `yaml:"logical_type" validate:"required"`
 }

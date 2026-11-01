@@ -1,0 +1,15 @@
+name: empty_cells
+fields:
+  - name: id
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^[0-9]+$"
+  - name: count
+    nullable: true
+    logical_type:
+      name: integer
+    representations:
+      - pattern: "^-$"
+        is_null: true
+      - pattern: "^[0-9]+$"

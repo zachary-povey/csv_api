@@ -173,7 +173,7 @@ func (fc FieldConfig) checkRepresentation(rep Representation) error {
 	}
 	// an is_null representation resolves to null and provides no value args
 	if rep.IsNull {
-		return nil
+		return fc.checkNullRepresentation(rep)
 	}
 
 	typeName := LogicalType(fc.RawLogicalTypeConfig["name"].(string))
@@ -225,6 +225,42 @@ func (fc FieldConfig) checkRepresentation(rep Representation) error {
 		}
 	}
 	return nil
+}
+
+// checkNullRepresentation checks an is_null representation: it is only
+// allowed on a nullable field, and since its match always means null it takes
+// no static args or named capture groups (unnamed groups are fine, e.g.
+// "^(-|N/A)$").
+func (fc FieldConfig) checkNullRepresentation(rep Representation) error {
+	if !fc.Nullable {
+		return fmt.Errorf("is_null representation on a field that is not nullable (add 'nullable: true' to the field)")
+	}
+	if len(rep.Args) > 0 {
+		return fmt.Errorf("an is_null representation can't have args, got [%s]", strings.Join(sortedKeys(keySet(rep.Args)), ", "))
+	}
+	// the user's own pattern, before CompilePattern names a lone unnamed group 'value'
+	rgx, err := regexp.Compile(rep.Pattern)
+	if err != nil {
+		return fmt.Errorf("invalid pattern: %w", err)
+	}
+	named := map[string]bool{}
+	for _, name := range rgx.SubexpNames()[1:] {
+		if name != "" {
+			named[name] = true
+		}
+	}
+	if len(named) > 0 {
+		return fmt.Errorf("an is_null representation can't have named capture groups, got [%s]", strings.Join(sortedKeys(named), ", "))
+	}
+	return nil
+}
+
+func keySet(m map[string]any) map[string]bool {
+	keys := map[string]bool{}
+	for k := range m {
+		keys[k] = true
+	}
+	return keys
 }
 
 // checkStaticArg checks that a static arg's value is usable by the type's

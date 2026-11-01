@@ -170,6 +170,9 @@ INVALID_CONFIG_FIXTURES = {
     "config_unknown_type_arg",
     "decimal_conflicting_args",
     *(name for name, *_ in REP_ARG_ERRORS),
+    "config_is_null_not_nullable",
+    "config_is_null_with_args",
+    "config_is_null_named_group",
 }
 
 
@@ -253,3 +256,35 @@ def test_enum_field_named_like_config_fails(build_path):
     result = run_validate_config(build_path, "config_name_enum_clash")
     assert result.returncode != 0, "validate_config should have failed"
     assert "field 'status'" in result.stderr
+
+
+# --- TASK-7: is_null representations ---
+
+
+def test_is_null_on_non_nullable_field_fails_parse(build_path):
+    """TASK-7 AC#3: an is_null representation on a field without nullable: true
+    is rejected at config load, naming the field."""
+    result = run_fixture(build_path, "config_is_null_not_nullable")
+    assert result.returncode != 0, "Command should have failed"
+    assert not result.output_exists
+    assert "field 'count'" in result.stderr
+    assert "is_null representation on a field that is not nullable" in result.stderr
+    assert "row " not in result.stderr
+
+
+@pytest.mark.parametrize(
+    "fixture_name, expected",
+    [
+        ("config_is_null_not_nullable", "is_null representation on a field that is not nullable"),
+        ("config_is_null_with_args", "an is_null representation can't have args, got [value]"),
+        ("config_is_null_named_group", "an is_null representation can't have named capture groups, got [value]"),
+    ],
+)
+def test_validate_config_rejects_bad_is_null_representations(build_path, fixture_name, expected):
+    """TASK-7 AC#3: validate_config rejects an is_null representation on a
+    non-nullable field; an is_null representation also can't carry static args
+    or named capture groups, since it provides no value args."""
+    result = run_validate_config(build_path, fixture_name)
+    assert result.returncode != 0, "validate_config should have failed"
+    assert "field 'count'" in result.stderr
+    assert expected in result.stderr
