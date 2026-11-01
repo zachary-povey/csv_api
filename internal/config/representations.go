@@ -111,19 +111,74 @@ func DecimalArg(s string, precision, scale int) (*big.Rat, error) {
 	if _, err := strconv.ParseFloat(s, 64); err != nil {
 		return nil, fmt.Errorf("'%s' is not a decimal", s)
 	}
-	r, ok := new(big.Rat).SetString(s)
-	if !ok {
-		return nil, fmt.Errorf("'%s' is not a decimal", s)
+
+	// Plain decimals like "-012.340" (the usual case) are parsed and checked
+	// from their digits, which is much cheaper than the general path below
+	// and gives the same results.
+	neg, intPart, fracPart, plain := plainDecimal(s)
+	var r *big.Rat
+	if plain && len(intPart)+len(fracPart) <= 18 {
+		// at most 18 digits always fit an int64
+		n, _ := strconv.ParseInt(intPart+fracPart, 10, 64)
+		if neg {
+			n = -n
+		}
+		r = new(big.Rat).SetFrac64(n, pow10Int64(len(fracPart)))
+	} else {
+		var ok bool
+		if r, ok = new(big.Rat).SetString(s); !ok {
+			return nil, fmt.Errorf("'%s' is not a decimal", s)
+		}
 	}
-	unscaled := new(big.Rat).Mul(r, new(big.Rat).SetInt(pow10(scale)))
-	if !unscaled.IsInt() {
+
+	var fitsScale, fitsPrecision bool
+	if plain && scale <= precision {
+		// significant digits: no trailing fractional or leading integer zeros
+		fitsScale = len(strings.TrimRight(fracPart, "0")) <= scale
+		fitsPrecision = len(strings.TrimLeft(intPart, "0")) <= precision-scale
+	} else {
+		unscaled := new(big.Rat).Mul(r, new(big.Rat).SetInt(pow10(scale)))
+		fitsScale = unscaled.IsInt()
+		fitsPrecision = new(big.Int).Abs(unscaled.Num()).Cmp(pow10(precision)) < 0
+	}
+	if !fitsScale {
 		return nil, fmt.Errorf("'%s' has more than %d fractional digits (scale %d)", s, scale, scale)
 	}
-	if new(big.Int).Abs(unscaled.Num()).Cmp(pow10(precision)) >= 0 {
+	if !fitsPrecision {
 		return nil, fmt.Errorf("'%s' has more than %d integer digits (precision %d, scale %d)",
 			s, precision-scale, precision, scale)
 	}
 	return r, nil
+}
+
+// plainDecimal splits a plain decimal like "-012.340" (an optional sign,
+// digits and an optional point) into its sign and its integer and fractional
+// digits. plain is false for any other syntax (exponents, hex, ...).
+func plainDecimal(s string) (neg bool, intPart, fracPart string, plain bool) {
+	if s != "" && (s[0] == '+' || s[0] == '-') {
+		neg = s[0] == '-'
+		s = s[1:]
+	}
+	intPart, fracPart, _ = strings.Cut(s, ".")
+	plain = isDigits(intPart) && isDigits(fracPart) && len(intPart)+len(fracPart) > 0
+	return neg, intPart, fracPart, plain
+}
+
+func isDigits(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func pow10Int64(n int) int64 {
+	p := int64(1)
+	for range n {
+		p *= 10
+	}
+	return p
 }
 
 func pow10(n int) *big.Int {

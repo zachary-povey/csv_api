@@ -24,7 +24,9 @@ import (
 )
 
 const (
-	queueBuffer int = 10
+	// rows queued between pipeline stages; enough that the goroutines run in
+	// bursts rather than handing over (and waking each other) row by row
+	queueBuffer int = 100
 )
 
 func main() {

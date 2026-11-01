@@ -715,3 +715,15 @@ def test_boolean_bad_static_arg_fails_config_load(build_path):
     assert "field 'active', pattern '^Y$'" in result.stderr
     assert "static arg 'value': must be true or false, got yes" in result.stderr
     assert "row " not in result.stderr
+
+
+def test_date_pattern_with_extra_unnamed_groups(build_path):
+    """Regression (found in TASK-20): named groups alongside two or more
+    unnamed groups used to crash the parser with an index out of range."""
+    result = run_fixture(build_path, "date_extra_unnamed_groups")
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    assert [r["d"] for r in result.records] == [
+        datetime.date(2024, 2, 29),
+        datetime.date(2024, 3, 1),
+        datetime.date(2024, 3, 2),
+    ]
