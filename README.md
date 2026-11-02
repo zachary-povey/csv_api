@@ -102,13 +102,31 @@ The trade-off: rows are emitted before the rest of the file has been checked, so
 - Without `--stream`, `--output-path` is required.
 - The data failure report and the JSON error report are still written to a temporary file and moved into place, as without `--stream`.
 
-`--stream` also works with `--output-format parquet`, for example to pipe the output straight to another tool:
+`--stream` also works with `--output-format parquet`, for example to pipe the output straight to another tool (see [Piping to an upload](#piping-to-an-upload) below before pointing it at a final destination):
 
 ```sh
-./build/csv-api parse -c config.yaml -i data.csv --stream --output-format parquet | aws s3 cp - s3://bucket/data.parquet
+./build/csv-api parse -c config.yaml -i data.csv --stream --output-format parquet | consumer
 ```
 
-A Parquet file is only readable once it is complete: its footer, holding the schema and the index of the row groups, is written at the very end. So unlike Avro, streamed Parquet gives the consumer no early access to rows; what `--stream` gives is a pipe-friendly output (no seeking, no temporary file) and bounded memory. Each row group of up to 100,000 rows is written to the output as soon as it is complete, and the footer once the whole file has passed. When a run fails, no footer is written, so the incomplete output is rejected by Parquet readers (it may also be empty, if the run failed before the first row group was complete). The exit code is still the signal to check.
+A Parquet file is only readable once it is complete: its footer, holding the schema and the index of the row groups, is written at the very end. So unlike Avro, streamed Parquet gives the consumer no early access to rows; what `--stream` gives is a pipe-friendly output (no seeking, no temporary file) and bounded memory. Each row group of up to 100,000 rows is written to the output as soon as it is complete, so the consumer receives the file progressively while later rows are still being validated, and the footer once the whole file has passed. When a run fails, no footer is written, so the incomplete output is rejected by Parquet readers (it may also be empty, if the run failed before the first row group was complete). The exit code is still the signal to check.
+
+##### Piping to an upload
+
+A failed run can't tell the next command in the pipe that it failed: it exits non-zero and closes stdout, which the next command sees as a normal end of input. An upload command such as `aws s3 cp - s3://...` therefore finishes the upload with whatever it received, and the incomplete output appears at the destination. (`set -o pipefail` doesn't prevent this; it only changes the exit status your shell reports.) Streaming does make the upload run alongside validation: `aws s3 cp -` sends the data as a multipart upload, part by part as it arrives, though the object only appears in S3 once the upload completes.
+
+So upload to a staging location, and move the file into place only when the whole pipeline succeeded:
+
+```sh
+set -o pipefail
+if ./build/csv-api parse -c config.yaml -i data.csv --stream --output-format parquet \
+     | aws s3 cp - s3://bucket/staging/data.parquet; then
+  aws s3 mv s3://bucket/staging/data.parquet s3://bucket/final/data.parquet
+else
+  aws s3 rm s3://bucket/staging/data.parquet
+fi
+```
+
+The same applies to Avro and to any consumer that commits what it reads (a database load, a message queue): treat the streamed output as provisional until the exit code says the run passed.
 
 Check a config file on its own:
 
